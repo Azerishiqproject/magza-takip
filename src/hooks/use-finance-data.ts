@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { addDoc, collection, doc, onSnapshot, setDoc } from "firebase/firestore";
+import { addDoc, collection, doc, onSnapshot, setDoc, writeBatch } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { demoCategories, demoStores, demoTransactions } from "@/lib/demo-data";
 import type { Category, Store, Transaction } from "@/lib/types";
@@ -46,6 +46,22 @@ export function useFinanceData() {
     return local;
   };
 
+  const updateCategory = async (id: string, category: Omit<Category, "id">) => {
+    const previous = categories.find((item) => item.id === id);
+    setCategories((current) => current.map((item) => item.id === id ? { ...category, id } : item));
+    if (previous?.type !== category.type) {
+      setTransactions((current) => current.map((item) => item.categoryId === id ? { ...item, type: category.type } : item));
+    }
+    try {
+      const batch = writeBatch(db);
+      batch.set(doc(db, "categories", id), category, { merge: true });
+      if (previous?.type !== category.type) {
+        transactions.filter((item) => item.categoryId === id).forEach((item) => batch.update(doc(db, "transactions", item.id), { type: category.type }));
+      }
+      await batch.commit();
+    } catch { setIsDemo(true); }
+  };
+
   const addTransaction = async (transaction: Omit<Transaction, "id">) => {
     const local = { ...transaction, id: crypto.randomUUID() };
     setTransactions((current) => [local, ...current]);
@@ -53,5 +69,5 @@ export function useFinanceData() {
     return local;
   };
 
-  return { stores, categories, transactions, isDemo, addStore, addCategory, addTransaction };
+  return { stores, categories, transactions, isDemo, addStore, addCategory, updateCategory, addTransaction };
 }
