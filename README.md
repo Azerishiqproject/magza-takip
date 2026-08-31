@@ -7,6 +7,10 @@ Shopify mağazaları için çoklu mağaza, gelir/gider, kategori ve kârlılık 
 - Sağ üstten mağaza değiştirme ve yeni mağaza oluşturma
 - Mağaza bazında özel gelir/gider kategorileri
 - Manuel gelir ve gider kaydı
+- Müşteri, ürün ve tutar bilgisiyle sipariş oluşturma
+- İletişim, geri dönüş, konum/kargo ve teslimat aşamalarını adım adım takip etme
+- Teslim edilen sipariş gelirini ve kargo giderini finans raporlarına otomatik aktarma
+- İptal edilen siparişlerde kargo masrafını isteğe bağlı olarak giderlere işleme
 - Günlük, haftalık, aylık, yıllık ve özel tarih aralığı filtreleri
 - Net kâr, toplam gelir, toplam gider ve kâr marjı metrikleri
 - Gelir/gider zaman grafiği ve kategori dağılımı
@@ -35,6 +39,7 @@ Kullanılan koleksiyonlar:
 - `stores`: `name`, `domain`, `currency`, `status`, `color`
 - `categories`: `storeId`, `name`, `type`, `color`
 - `transactions`: `storeId`, `categoryId`, `type`, `title`, `amount`, `date`, `note`
+- `orders`: `storeId`, `customerName`, `product`, `amount`, `stage`, `status`, aşama notları ve kargo bilgisi
 
 Mevcut `firestore.rules` tek kullanıcı ve girişsiz kullanım isteğine göre doğrudan erişime açıktır. Uygulama herkese açık bir adreste yayınlanırsa bu kurallar veritabanını da herkese açar; böyle bir durumda kimlik doğrulama veya sunucu taraflı erişim eklenmelidir.
 

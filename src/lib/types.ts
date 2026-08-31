@@ -26,6 +26,29 @@ export interface Transaction {
   amount: number;
   date: string;
   note?: string;
+  orderId?: string;
+}
+
+export type OrderStage = "new" | "contacted" | "responded" | "addressed" | "delivered";
+export type OrderStatus = "active" | "completed" | "cancelled";
+
+export interface Order {
+  id: string;
+  storeId: string;
+  customerName: string;
+  product: string;
+  amount: number;
+  stage: OrderStage;
+  status: OrderStatus;
+  responseNote?: string;
+  addressNote?: string;
+  shippingCost?: number;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+  cancelledAt?: string;
+  cancellationNote?: string;
+  cancelledShippingCharged?: boolean;
 }
 
 export type Period = "day" | "week" | "month" | "year" | "custom";

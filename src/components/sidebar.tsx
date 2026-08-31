@@ -1,11 +1,12 @@
 "use client";
 
-import { BarChart3, ChevronLeft, LayoutDashboard, Menu, ReceiptText, Settings, Shapes, Store, X } from "lucide-react";
+import { BarChart3, ChevronLeft, LayoutDashboard, Menu, PackageCheck, ReceiptText, Settings, Shapes, Store, X } from "lucide-react";
 
-export type View = "overview" | "transactions" | "categories" | "stores";
+export type View = "overview" | "orders" | "transactions" | "categories" | "stores";
 
 const items = [
   { id: "overview" as const, label: "Genel bakış", icon: LayoutDashboard },
+  { id: "orders" as const, label: "Siparişler", icon: PackageCheck },
   { id: "transactions" as const, label: "İşlemler", icon: ReceiptText },
   { id: "categories" as const, label: "Kategoriler", icon: Shapes },
   { id: "stores" as const, label: "Mağazalar", icon: Store },

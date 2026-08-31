@@ -10,6 +10,7 @@ import { money, shortDate } from "@/lib/format";
 import type { Category, Period, Store, TransactionType } from "@/lib/types";
 import { Field, Modal } from "./modal";
 import { MobileMenuButton, Sidebar, type View } from "./sidebar";
+import { OrdersView } from "./orders-view";
 
 const PERIODS: { id: Period; label: string }[] = [
   { id: "day", label: "Bugün" }, { id: "week", label: "Hafta" }, { id: "month", label: "Ay" }, { id: "year", label: "Yıl" }, { id: "custom", label: "Özel" },
@@ -31,7 +32,7 @@ function getRange(period: Period, customStart: string, customEnd: string) {
 }
 
 export function Dashboard() {
-  const { stores, categories, transactions, isDemo, addStore, addCategory, updateCategory, addTransaction } = useFinanceData();
+  const { stores, categories, transactions, orders, isDemo, addStore, addCategory, updateCategory, addTransaction, addOrder, updateOrderStage, editOrderDetails, completeOrder, cancelOrder } = useFinanceData();
   const [view, setView] = useState<View>("overview");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [activeStoreId, setActiveStoreId] = useState(stores[0]?.id ?? "");
@@ -94,7 +95,7 @@ export function Dashboard() {
       <Sidebar view={view} setView={setView} open={mobileOpen} onClose={() => setMobileOpen(false)} />
       <div className="min-w-0 max-w-full flex-1 overflow-x-hidden">
         <header className="sticky top-0 z-20 flex h-[68px] items-center justify-between border-b border-[#202831] bg-[#0a0e12]/95 px-4 backdrop-blur md:px-6">
-          <div className="flex items-center gap-3"><MobileMenuButton onClick={() => setMobileOpen(true)} /><div><p className="text-[9px] uppercase tracking-[.14em] text-[#66717c]">Mithra Finans</p><h1 className="text-[13px] font-semibold">{view === "overview" ? "Genel bakış" : view === "transactions" ? "İşlemler" : view === "categories" ? "Kategoriler" : "Mağazalar"}</h1></div></div>
+          <div className="flex items-center gap-3"><MobileMenuButton onClick={() => setMobileOpen(true)} /><div><p className="text-[9px] uppercase tracking-[.14em] text-[#66717c]">Mithra Finans</p><h1 className="text-[13px] font-semibold">{view === "overview" ? "Genel bakış" : view === "orders" ? "Siparişler" : view === "transactions" ? "İşlemler" : view === "categories" ? "Kategoriler" : "Mağazalar"}</h1></div></div>
           <div className="flex items-center gap-2">
             {isDemo && <span className="hidden rounded-full border border-[#42514c] bg-[#17231f] px-2.5 py-1 text-[9px] font-semibold text-[#73caba] sm:block">DEMO VERİSİ</span>}
             <div className="relative">
@@ -108,6 +109,7 @@ export function Dashboard() {
 
         <div className="mx-auto max-w-[1500px] p-4 md:p-6">
           {view === "overview" && <Overview activeStore={activeStore} period={period} setPeriod={setPeriod} customStart={customStart} customEnd={customEnd} setCustomStart={setCustomStart} setCustomEnd={setCustomEnd} totalIncome={totalIncome} totalExpense={totalExpense} profit={profit} margin={margin} chartData={chartData} expenseData={expenseData} transactions={storeTransactions} categories={storeCategories} openTransaction={openTransaction} onChartSelect={(date, type, granularity) => setChartDetail({ date, type, granularity })} />}
+          {view === "orders" && <OrdersView store={activeStore} orders={orders.filter((item) => item.storeId === activeStore.id)} onAdd={addOrder} onStage={updateOrderStage} onEdit={editOrderDetails} onComplete={completeOrder} onCancel={cancelOrder} />}
           {view === "transactions" && <TransactionsView transactions={transactions.filter((item) => item.storeId === activeStore.id)} categories={storeCategories} store={activeStore} onAdd={() => openTransaction("income")} />}
           {view === "categories" && <CategoriesView categories={storeCategories} transactions={transactions} store={activeStore} onAdd={() => { setEditingCategory(null); setModal("category"); }} onEdit={(category) => { setEditingCategory(category); setModal("category"); }} onSelect={(category) => setSelectedCategoryId(category.id)} />}
           {view === "stores" && <StoresView stores={stores} transactions={transactions} onSelect={(id) => { setActiveStoreId(id); setSelectedCategoryId(null); setView("overview"); }} onAdd={() => setModal("store")} />}
