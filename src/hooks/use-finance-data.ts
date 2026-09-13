@@ -75,6 +75,35 @@ export function useFinanceData() {
     return local;
   };
 
+  const updateTransaction = async (id: string, changes: Pick<Transaction, "title" | "amount" | "date" | "categoryId" | "type" | "note">) => {
+    const previous = transactions.find((item) => item.id === id);
+    if (!previous) throw new Error("İşlem bulunamadı. Listeyi yenileyip tekrar deneyin.");
+    const category = categories.find((item) => item.id === changes.categoryId && item.storeId === previous.storeId && item.type === changes.type);
+    if (!category || !changes.title.trim() || !Number.isFinite(changes.amount) || changes.amount <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(changes.date) || Number.isNaN(new Date(`${changes.date}T12:00:00`).getTime())) {
+      throw new Error("İşlem adı, tutar, tarih ve kategoriyi kontrol edin.");
+    }
+    if (previous.orderId && changes.type !== previous.type) throw new Error("Siparişe bağlı işlemin türü değiştirilemez.");
+
+    const data = { title: changes.title.trim(), amount: changes.amount, date: changes.date, categoryId: changes.categoryId, type: changes.type, note: changes.note ?? "" };
+    const orderChanges = previous.orderId && previous.amount !== data.amount
+      ? id === `order-income-${previous.orderId}` ? { amount: data.amount }
+        : id === `order-shipping-${previous.orderId}` ? { shippingCost: data.amount } : null
+      : null;
+    const updatedAt = new Date().toISOString();
+
+    if (!isDemo) {
+      const batch = writeBatch(db);
+      batch.update(doc(db, "transactions", id), data);
+      if (previous.orderId && orderChanges) batch.update(doc(db, "orders", previous.orderId), { ...orderChanges, updatedAt });
+      await batch.commit();
+    }
+    setTransactions((current) => current.map((item) => item.id === id ? { ...item, ...data } : item));
+    if (previous.orderId && orderChanges) {
+      setOrders((current) => current.map((item) => item.id === previous.orderId ? { ...item, ...orderChanges, updatedAt } : item));
+    }
+    return { persisted: !isDemo };
+  };
+
   const addOrder = async (order: Pick<Order, "storeId" | "customerName" | "product" | "amount">) => {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
@@ -176,5 +205,5 @@ export function useFinanceData() {
     } catch { setIsDemo(true); }
   };
 
-  return { stores, categories, transactions, orders, isDemo, addStore, addCategory, updateCategory, addTransaction, addOrder, updateOrderStage, editOrderDetails, completeOrder, cancelOrder };
+  return { stores, categories, transactions, orders, isDemo, addStore, addCategory, updateCategory, addTransaction, updateTransaction, addOrder, updateOrderStage, editOrderDetails, completeOrder, cancelOrder };
 }

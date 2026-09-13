@@ -7,6 +7,7 @@ Shopify mağazaları için çoklu mağaza, gelir/gider, kategori ve kârlılık 
 - Sağ üstten mağaza değiştirme ve yeni mağaza oluşturma
 - Mağaza bazında özel gelir/gider kategorileri
 - Manuel gelir ve gider kaydı
+- İşlemler ve son hareketler listesinden kayıt düzenleme; siparişe bağlı tutarları siparişle birlikte güncelleme
 - Müşteri, ürün ve tutar bilgisiyle sipariş oluşturma
 - İletişim, geri dönüş, konum/kargo ve teslimat aşamalarını adım adım takip etme
 - Teslim edilen sipariş gelirini ve kargo giderini finans raporlarına otomatik aktarma
