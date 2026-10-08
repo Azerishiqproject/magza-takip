@@ -3,14 +3,17 @@
 import { useMemo, useRef, useState } from "react";
 import { eachDayOfInterval, endOfDay, format, startOfDay, startOfMonth, startOfWeek, startOfYear, subDays } from "date-fns";
 import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ArrowDownRight, ArrowUpRight, CalendarDays, ChevronDown, Download, Layers3, Pencil, Plus, Search, Store as StoreIcon, TrendingUp, WalletCards, X } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, CalendarDays, Download, Layers3, Pencil, Plus, Search, TrendingUp, WalletCards, X } from "lucide-react";
 import { toast } from "sonner";
 import { useFinanceData } from "@/hooks/use-finance-data";
 import { money, shortDate } from "@/lib/format";
-import type { Category, Period, Store, Transaction, TransactionType } from "@/lib/types";
+import type { Category, Period, Store, StoreFolder, Transaction, TransactionType } from "@/lib/types";
 import { Field, Modal } from "./modal";
 import { MobileMenuButton, Sidebar, type View } from "./sidebar";
+import { ProductsView } from "./products-view";
 import { OrdersView } from "./orders-view";
+import { StoresView } from "./stores-view";
+import { StorePicker } from "./store-picker";
 
 const PERIODS: { id: Period; label: string }[] = [
   { id: "day", label: "Bugün" }, { id: "week", label: "Hafta" }, { id: "month", label: "Ay" }, { id: "year", label: "Yıl" }, { id: "custom", label: "Özel" },
@@ -32,7 +35,7 @@ function getRange(period: Period, customStart: string, customEnd: string) {
 }
 
 export function Dashboard() {
-  const { stores, categories, transactions, orders, isDemo, addStore, addCategory, updateCategory, addTransaction, updateTransaction, addOrder, updateOrderStage, editOrderDetails, completeOrder, cancelOrder } = useFinanceData();
+  const { stores, folders, products, addProduct, updateProduct, adjustStock, categories, transactions, orders, isDemo, addStore, updateStore, deleteStore, saveFolder, deleteFolder, updateOrder, deleteOrder, addCategory, updateCategory, addTransaction, updateTransaction, addOrder, updateOrderStage, editOrderDetails, completeOrder, cancelOrder } = useFinanceData();
   const [view, setView] = useState<View>("overview");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [activeStoreId, setActiveStoreId] = useState(stores[0]?.id ?? "");
@@ -87,8 +90,6 @@ export function Dashboard() {
     color: category.color || expenseColors[index % expenseColors.length],
   })).filter((item) => item.value > 0).sort((a, b) => b.value - a.value), [storeCategories, storeTransactions]);
 
-  if (!activeStore) return <div className="grid min-h-screen place-items-center text-[#89939f]">Mağaza yükleniyor…</div>;
-
   const openTransaction = (type: TransactionType) => { setEditingTransaction(null); setTransactionType(type); setModal("transaction"); };
   const editTransaction = (transaction: Transaction) => { setEditingTransaction(transaction); setTransactionType(transaction.type); setModal("transaction"); };
 
@@ -97,28 +98,26 @@ export function Dashboard() {
       <Sidebar view={view} setView={setView} open={mobileOpen} onClose={() => setMobileOpen(false)} />
       <div className="min-w-0 max-w-full flex-1 overflow-x-hidden">
         <header className="sticky top-0 z-20 flex h-[68px] items-center justify-between border-b border-[#202831] bg-[#0a0e12]/95 px-4 backdrop-blur md:px-6">
-          <div className="flex items-center gap-3"><MobileMenuButton onClick={() => setMobileOpen(true)} /><div><p className="text-[9px] uppercase tracking-[.14em] text-[#66717c]">Mithra Finans</p><h1 className="text-[13px] font-semibold">{view === "overview" ? "Genel bakış" : view === "orders" ? "Siparişler" : view === "transactions" ? "İşlemler" : view === "categories" ? "Kategoriler" : "Mağazalar"}</h1></div></div>
+          <div className="flex items-center gap-3"><MobileMenuButton onClick={() => setMobileOpen(true)} /><div><p className="text-[9px] uppercase tracking-[.14em] text-[#66717c]">Mithra Finans</p><h1 className="text-[13px] font-semibold">{view === "overview" ? "Genel bakış" : view === "products" ? "Ürünler ve stok" : view === "orders" ? "Siparişler" : view === "transactions" ? "İşlemler" : view === "categories" ? "Kategoriler" : "Mağazalar"}</h1></div></div>
           <div className="flex items-center gap-2">
             {isDemo && <span className="hidden rounded-full border border-[#42514c] bg-[#17231f] px-2.5 py-1 text-[9px] font-semibold text-[#73caba] sm:block">DEMO VERİSİ</span>}
-            <div className="relative">
-              <button onClick={() => setStorePicker(!storePicker)} className="flex min-w-[148px] items-center gap-2 rounded-xl border border-[#28313a] bg-[#11171d] px-3 py-2 text-left hover:border-[#3a474f]">
-                <span className="h-2 w-2 rounded-full" style={{ background: activeStore.color }} /><span className="min-w-0 flex-1"><span className="block truncate text-[10px] font-semibold">{activeStore.name}</span><span className="block truncate text-[8px] text-[#65717c]">{activeStore.domain}</span></span><ChevronDown size={13} className="text-[#6e7882]" />
-              </button>
-              {storePicker && <div className="panel absolute right-0 mt-2 w-[220px] rounded-xl p-1.5 shadow-2xl">{stores.map((store) => <button key={store.id} onClick={() => { setActiveStoreId(store.id); setSelectedCategoryId(null); setStorePicker(false); }} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left hover:bg-white/[.04]"><span className="h-2 w-2 rounded-full" style={{ background: store.color }} /><span className="flex-1 text-[10px]">{store.name}</span>{store.id === activeStore.id && <span className="text-[9px] text-[#2dd4bf]">Aktif</span>}</button>)}<button onClick={() => { setStorePicker(false); setModal("store"); }} className="mt-1 flex w-full items-center gap-2 border-t border-[#29313a] px-3 pt-2.5 pb-1.5 text-[10px] text-[#69d8ca]"><Plus size={13} />Yeni mağaza</button></div>}
-            </div>
+            <StorePicker stores={stores} folders={folders} activeStore={activeStore} open={storePicker} onToggle={() => setStorePicker(!storePicker)} onClose={() => setStorePicker(false)} onSelect={(id) => { setActiveStoreId(id); setSelectedCategoryId(null); setChartDetail(null); setModal(null); setStorePicker(false); }} onAdd={() => { setStorePicker(false); setModal("store"); }} onManage={() => { setStorePicker(false); setView("stores"); }}/>
+
           </div>
         </header>
 
         <div className="mx-auto max-w-[1500px] p-4 md:p-6">
-          {view === "overview" && <Overview activeStore={activeStore} period={period} setPeriod={setPeriod} customStart={customStart} customEnd={customEnd} setCustomStart={setCustomStart} setCustomEnd={setCustomEnd} totalIncome={totalIncome} totalExpense={totalExpense} profit={profit} margin={margin} chartData={chartData} expenseData={expenseData} transactions={storeTransactions} categories={storeCategories} openTransaction={openTransaction} onEditTransaction={editTransaction} onChartSelect={(date, type, granularity) => setChartDetail({ date, type, granularity })} />}
-          {view === "orders" && <OrdersView store={activeStore} orders={orders.filter((item) => item.storeId === activeStore.id)} onAdd={addOrder} onStage={updateOrderStage} onEdit={editOrderDetails} onComplete={completeOrder} onCancel={cancelOrder} />}
-          {view === "transactions" && <TransactionsView transactions={transactions.filter((item) => item.storeId === activeStore.id)} categories={storeCategories} store={activeStore} onAdd={() => openTransaction("income")} onEdit={editTransaction} />}
-          {view === "categories" && <CategoriesView categories={storeCategories} transactions={transactions} store={activeStore} onAdd={() => { setEditingCategory(null); setModal("category"); }} onEdit={(category) => { setEditingCategory(category); setModal("category"); }} onSelect={(category) => setSelectedCategoryId(category.id)} />}
-          {view === "stores" && <StoresView stores={stores} transactions={transactions} onSelect={(id) => { setActiveStoreId(id); setSelectedCategoryId(null); setView("overview"); }} onAdd={() => setModal("store")} />}
+          {activeStore && view === "overview" && <Overview activeStore={activeStore} period={period} setPeriod={setPeriod} customStart={customStart} customEnd={customEnd} setCustomStart={setCustomStart} setCustomEnd={setCustomEnd} totalIncome={totalIncome} totalExpense={totalExpense} profit={profit} margin={margin} chartData={chartData} expenseData={expenseData} transactions={storeTransactions} categories={storeCategories} openTransaction={openTransaction} onEditTransaction={editTransaction} onChartSelect={(date, type, granularity) => setChartDetail({ date, type, granularity })} />}
+          {activeStore && view === "products" && <ProductsView key={activeStore.id} store={activeStore} products={products.filter((item) => item.storeId === activeStore.id)} onAdd={addProduct} onUpdate={updateProduct} onStock={adjustStock}/>}
+          {activeStore && view === "orders" && <OrdersView products={products.filter((item) => item.storeId === activeStore.id)} onProducts={() => setView("products")} key={activeStore.id} store={activeStore} orders={orders.filter((item) => item.storeId === activeStore.id)} onAdd={addOrder} onStage={updateOrderStage} onEdit={editOrderDetails} onUpdate={updateOrder} onDelete={deleteOrder} onComplete={completeOrder} onCancel={cancelOrder} />}
+          {activeStore && view === "transactions" && <TransactionsView transactions={transactions.filter((item) => item.storeId === activeStore.id)} categories={storeCategories} store={activeStore} onAdd={() => openTransaction("income")} onEdit={editTransaction} />}
+          {activeStore && view === "categories" && <CategoriesView categories={storeCategories} transactions={transactions} store={activeStore} onAdd={() => { setEditingCategory(null); setModal("category"); }} onEdit={(category) => { setEditingCategory(category); setModal("category"); }} onSelect={(category) => setSelectedCategoryId(category.id)} />}
+          {view === "stores" && <StoresView products={products} stores={stores} folders={folders} orders={orders} categories={categories} transactions={transactions} onUpdate={updateStore} onDelete={deleteStore} onSaveFolder={saveFolder} onDeleteFolder={deleteFolder} onSelect={(id) => { setActiveStoreId(id); setSelectedCategoryId(null); setView("overview"); }} onAdd={() => setModal("store")} />}
+          {!activeStore && view !== "stores" && <div className="panel rounded-2xl p-10 text-center"><h2 className="text-[18px] font-semibold">Henüz mağaza yok</h2><p className="mt-2 text-[11px] text-[#89939f]">Sipariş ve finans takibine başlamak için ilk mağazanızı oluşturun.</p><button onClick={() => setModal("store")} className="mt-5 rounded-xl bg-[#2dd4bf] px-4 py-3 text-[11px] font-bold text-[#07110f]">Mağaza oluştur</button></div>}
         </div>
       </div>
 
-      {modal === "transaction" && <TransactionModal key={editingTransaction?.id ?? "new"} open onClose={() => { setModal(null); setEditingTransaction(null); }} transaction={editingTransaction} type={transactionType} setType={setTransactionType} store={activeStore} categories={storeCategories} onSubmit={async (data) => {
+      {activeStore && modal === "transaction" && <TransactionModal key={editingTransaction?.id ?? "new"} open onClose={() => { setModal(null); setEditingTransaction(null); }} transaction={editingTransaction} type={transactionType} setType={setTransactionType} store={activeStore} categories={storeCategories} onSubmit={async (data) => {
         if (editingTransaction) {
           const result = await updateTransaction(editingTransaction.id, data);
           if (result.persisted) toast.success("İşlem güncellendi");
@@ -130,10 +129,10 @@ export function Dashboard() {
         setModal(null);
         setEditingTransaction(null);
       }} />}
-      <StoreModal open={modal === "store"} onClose={() => setModal(null)} onSubmit={async (data) => { const store = await addStore(data); const alreadyExists = stores.some((item) => item.id === store.id); setActiveStoreId(store.id); setModal(null); if (alreadyExists) toast.info("Bu mağaza zaten mevcut"); else toast.success("Mağaza oluşturuldu"); }} />
-      <CategoryModal open={modal === "category"} onClose={() => { setModal(null); setEditingCategory(null); }} storeId={activeStore.id} category={editingCategory} onSubmit={async (data) => { if (editingCategory) { await updateCategory(editingCategory.id, data); toast.success("Kategori güncellendi"); } else { await addCategory(data); toast.success("Kategori oluşturuldu"); } setModal(null); setEditingCategory(null); }} />
+      <StoreModal key={modal === "store" ? "open" : "closed"} folders={folders} open={modal === "store"} onClose={() => setModal(null)} onSubmit={async (data) => { const store = await addStore(data); const alreadyExists = stores.some((item) => item.id === store.id); setActiveStoreId(store.id); setModal(null); if (alreadyExists) toast.info("Bu mağaza zaten mevcut"); else toast.success("Mağaza oluşturuldu"); }} />
+      {activeStore && <><CategoryModal open={modal === "category"} onClose={() => { setModal(null); setEditingCategory(null); }} storeId={activeStore.id} category={editingCategory} onSubmit={async (data) => { if (editingCategory) { await updateCategory(editingCategory.id, data); toast.success("Kategori güncellendi"); } else { await addCategory(data); toast.success("Kategori oluşturuldu"); } setModal(null); setEditingCategory(null); }} />
       <ChartDetailDrawer detail={chartDetail} onClose={() => setChartDetail(null)} transactions={storeTransactions} categories={storeCategories} store={activeStore} />
-      <CategoryDetailDrawer key={selectedCategoryId ?? "closed"} category={storeCategories.find((category) => category.id === selectedCategoryId) ?? null} onClose={() => setSelectedCategoryId(null)} transactions={transactions.filter((item) => item.storeId === activeStore.id)} store={activeStore} />
+      <CategoryDetailDrawer key={selectedCategoryId ?? "closed"} category={storeCategories.find((category) => category.id === selectedCategoryId) ?? null} onClose={() => setSelectedCategoryId(null)} transactions={transactions.filter((item) => item.storeId === activeStore.id)} store={activeStore} /></>}
     </main>
   );
 }
@@ -210,8 +209,6 @@ function TransactionsView({ transactions, categories, store, onAdd, onEdit }: { 
 
 function CategoriesView({ categories, transactions, store, onAdd, onEdit, onSelect }: { categories: Category[]; transactions: import("@/lib/types").Transaction[]; store: Store; onAdd: () => void; onEdit: (category: Category) => void; onSelect: (category: Category) => void }) { return <PageShell title="Kategoriler" description="Gelir ve giderlerinizi size uygun başlıklarla düzenleyin" action={<button onClick={onAdd} className="flex items-center gap-2 rounded-xl bg-[#2dd4bf] px-3.5 py-2 text-[10px] font-bold text-[#07110f]"><Plus size={14}/>Kategori oluştur</button>}><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{categories.map(category => { const categoryTransactions = transactions.filter(t => t.categoryId === category.id); const total = categoryTransactions.reduce((s,t) => s+t.amount, 0); return <div key={category.id} role="button" tabIndex={0} onClick={() => onSelect(category)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onSelect(category); }} className="panel cursor-pointer rounded-2xl p-4 transition hover:-translate-y-0.5 hover:border-[#3b4a52] focus:outline-none focus:ring-2 focus:ring-[#2dd4bf]/20"><div className="flex items-start justify-between"><span className="grid h-9 w-9 place-items-center rounded-xl" style={{ background: `${category.color}18`, color: category.color }}><Layers3 size={16}/></span><div className="flex items-center gap-2"><span className={`rounded-full px-2 py-1 text-[8px] font-semibold ${category.type === "income" ? "bg-[#17302b] text-[#65d9ca]" : "bg-[#321f1e] text-[#ff847a]"}`}>{category.type === "income" ? "Gelir" : "Gider"}</span><button onClick={(event) => { event.stopPropagation(); onEdit(category); }} onKeyDown={(event) => event.stopPropagation()} className="rounded-lg border border-[#29333c] p-1.5 text-[#7d8993] transition hover:border-[#44515b] hover:bg-white/[.04] hover:text-white" aria-label={`${category.name} kategorisini düzenle`}><Pencil size={12}/></button></div></div><p className="mt-5 text-[11px] font-semibold">{category.name}</p><p className="mt-1 text-[9px] text-[#68737d]">{categoryTransactions.length} işlem · Detayları görmek için açın</p><p className="mt-4 text-[15px] font-semibold">{money(total, store.currency)}</p></div>})}</div></PageShell>; }
 
-function StoresView({ stores, transactions, onSelect, onAdd }: { stores: Store[]; transactions: import("@/lib/types").Transaction[]; onSelect: (id: string) => void; onAdd: () => void }) { return <PageShell title="Mağazalar" description="Mithra altında yönettiğiniz tüm Shopify mağazaları" action={<button onClick={onAdd} className="flex items-center gap-2 rounded-xl bg-[#2dd4bf] px-3.5 py-2 text-[10px] font-bold text-[#07110f]"><Plus size={14}/>Mağaza oluştur</button>}><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{stores.map(store => { const data = transactions.filter(t => t.storeId === store.id); const net = data.reduce((s,t) => s + (t.type === "income" ? t.amount : -t.amount), 0); return <button key={store.id} onClick={() => onSelect(store.id)} className="panel rounded-2xl p-5 text-left transition hover:-translate-y-0.5 hover:border-[#3a494f]"><div className="flex items-center justify-between"><span className="grid h-10 w-10 place-items-center rounded-xl" style={{ background: `${store.color}1c`, color: store.color }}><StoreIcon size={18}/></span><span className="flex items-center gap-1.5 text-[8px] text-[#7d8992]"><span className="h-1.5 w-1.5 rounded-full bg-[#2dd4bf]"/>AKTİF</span></div><p className="mt-5 text-[12px] font-semibold">{store.name}</p><p className="mt-1 text-[9px] text-[#68737d]">{store.domain}</p><div className="mt-5 border-t border-[#252d35] pt-4"><p className="text-[8px] uppercase tracking-[.12em] text-[#626d77]">Toplam net sonuç</p><p className={`mt-1.5 text-[16px] font-semibold ${net >= 0 ? "text-[#69dccc]" : "text-[#ff8177]"}`}>{money(net, store.currency)}</p></div></button>})}</div></PageShell>; }
-
 function PageShell({ title, description, action, children }: { title: string; description: string; action: React.ReactNode; children: React.ReactNode }) { return <><div className="mb-5 flex items-center justify-between gap-4"><div><h2 className="text-[20px] font-semibold tracking-[-.03em]">{title}</h2><p className="mt-1 text-[10px] text-[#77818b]">{description}</p></div>{action}</div>{children}</>; }
 
 function useSubmissionLock() {
@@ -224,6 +221,8 @@ function useSubmissionLock() {
     setSubmitting(true);
     try {
       await action();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "İşlem kaydedilemedi. Bağlantınızı kontrol edip tekrar deneyin.");
     } finally {
       lockRef.current = false;
       setSubmitting(false);
@@ -278,9 +277,17 @@ function TransactionModal({ open, onClose, transaction, type, setType, store, ca
   </Modal>;
 }
 
-function StoreModal({ open, onClose, onSubmit }: { open: boolean; onClose: () => void; onSubmit: (data: Omit<Store, "id">) => Promise<void> }) {
+function StoreModal({ open, onClose, onSubmit, folders }: { open: boolean; onClose: () => void; folders: StoreFolder[]; onSubmit: (data: Omit<Store, "id">) => Promise<void> }) {
   const { submitting, runOnce } = useSubmissionLock();
-  return <Modal open={open} onClose={onClose} title="Yeni mağaza" description="Shopify mağazanız için ayrı bir finans çalışma alanı oluşturun."><form className="space-y-4" onSubmit={e => { e.preventDefault(); const form = e.currentTarget; void runOnce(async () => { const f = new FormData(form); await onSubmit({ name: String(f.get("name")), domain: String(f.get("domain")), currency: String(f.get("currency")) as Store["currency"], status: "active", color: String(f.get("color")) }); }); }}><Field label="Mağaza adı"><input required disabled={submitting} name="name" className="input" placeholder="Örn. North Atelier"/></Field><Field label="Mağaza domaini"><input required disabled={submitting} name="domain" className="input" placeholder="magazam.myshopify.com"/></Field><div className="grid grid-cols-[1fr_70px] gap-3"><Field label="Para birimi"><select disabled={submitting} name="currency" defaultValue="AZN" className="input"><option>AZN</option><option>USD</option><option>EUR</option><option>TRY</option></select></Field><Field label="Renk"><input disabled={submitting} type="color" name="color" defaultValue="#2dd4bf" className="input h-[39px] p-1.5"/></Field></div><button disabled={submitting} className="w-full rounded-xl bg-[#2dd4bf] py-3 text-[10px] font-bold text-[#07110f] disabled:cursor-not-allowed disabled:opacity-60">{submitting ? "Oluşturuluyor…" : "Mağazayı oluştur"}</button></form></Modal>;
+  const close = () => { if (!submitting) onClose(); };
+  return <Modal open={open} onClose={close} title="Yeni mağaza" description="Shopify mağazanız için ayrı bir finans çalışma alanı oluşturun."><form className="space-y-4" onSubmit={(event) => {
+    event.preventDefault(); const form = event.currentTarget;
+    void runOnce(async () => {
+      const data = new FormData(form);
+      try { await onSubmit({ name: String(data.get("name")).trim(), domain: String(data.get("domain")).trim(), currency: String(data.get("currency")) as Store["currency"], status: "active", color: String(data.get("color")), folderId: String(data.get("folderId") ?? "") || null }); }
+      catch (error) { toast.error(error instanceof Error ? error.message : "Mağaza oluşturulamadı."); }
+    });
+  }}><Field label="Mağaza adı"><input required disabled={submitting} name="name" className="input" placeholder="Örn. North Atelier"/></Field><Field label="Mağaza domaini"><input required disabled={submitting} name="domain" className="input" placeholder="magazam.myshopify.com"/></Field><Field label="Klasör (isteğe bağlı)"><select disabled={submitting} name="folderId" className="input"><option value="">Klasörsüz</option>{folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></Field><div className="grid grid-cols-[1fr_70px] gap-3"><Field label="Para birimi"><select disabled={submitting} name="currency" defaultValue="AZN" className="input"><option>AZN</option><option>USD</option><option>EUR</option><option>TRY</option></select></Field><Field label="Renk"><input disabled={submitting} type="color" name="color" defaultValue="#2dd4bf" className="input h-[39px] p-1.5"/></Field></div><button disabled={submitting} className="w-full rounded-xl bg-[#2dd4bf] py-3 text-[10px] font-bold text-[#07110f] disabled:opacity-60">{submitting ? "Oluşturuluyor…" : "Mağazayı oluştur"}</button></form></Modal>;
 }
 
 function CategoryModal({ open, onClose, storeId, category, onSubmit }: { open: boolean; onClose: () => void; storeId: string; category: Category | null; onSubmit: (data: Omit<Category, "id">) => Promise<void> }) {

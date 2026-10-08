@@ -1,4 +1,4 @@
-import type { Category, Store, Transaction } from "./types";
+import type { Category, Product, Store, Transaction } from "./types";
 
 export const demoStores: Store[] = [
   { id: "north-atelier", name: "North Atelier", domain: "northatelier.com", currency: "AZN", status: "active", color: "#2dd4bf" },
@@ -36,3 +36,9 @@ export const demoTransactions: Transaction[] = Array.from({ length: 64 }, (_, i)
     note: income ? "Online mağaza" : undefined,
   };
 });
+
+
+export const demoProducts: Product[] = [
+  { id: "demo-bag", storeId: "north-atelier", name: "Deri çanta", sku: "CANTA-01", price: 120, stock: 20, active: true, createdAt: "2026-10-01T10:00:00Z", updatedAt: "2026-10-01T10:00:00Z" },
+  { id: "demo-wallet", storeId: "north-atelier", name: "Cüzdan", sku: "CUZDAN-01", price: 45, stock: 5, active: true, createdAt: "2026-10-01T10:00:00Z", updatedAt: "2026-10-01T10:00:00Z" },
+];

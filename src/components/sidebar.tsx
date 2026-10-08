@@ -1,11 +1,12 @@
 "use client";
 
-import { BarChart3, ChevronLeft, LayoutDashboard, Menu, PackageCheck, ReceiptText, Settings, Shapes, Store, X } from "lucide-react";
+import { BarChart3, Boxes, ChevronLeft, LayoutDashboard, Menu, PackageCheck, ReceiptText, Settings, Shapes, Store, X } from "lucide-react";
 
-export type View = "overview" | "orders" | "transactions" | "categories" | "stores";
+export type View = "overview" | "products" | "orders" | "transactions" | "categories" | "stores";
 
 const items = [
   { id: "overview" as const, label: "Genel bakış", icon: LayoutDashboard },
+  { id: "products" as const, label: "Ürünler ve stok", icon: Boxes },
   { id: "orders" as const, label: "Siparişler", icon: PackageCheck },
   { id: "transactions" as const, label: "İşlemler", icon: ReceiptText },
   { id: "categories" as const, label: "Kategoriler", icon: Shapes },
@@ -13,7 +14,7 @@ const items = [
 ];
 
 export function MobileMenuButton({ onClick }: { onClick: () => void }) {
-  return <button className="rounded-lg border border-[#27303a] p-2 text-[#a4adb7] lg:hidden" onClick={onClick}><Menu size={17} /></button>;
+  return <button aria-label="Menüyü aç" className="rounded-lg border border-[#27303a] p-2 text-[#a4adb7] lg:hidden" onClick={onClick}><Menu size={17} /></button>;
 }
 
 export function Sidebar({ view, setView, open, onClose }: { view: View; setView: (view: View) => void; open: boolean; onClose: () => void }) {
@@ -26,7 +27,7 @@ export function Sidebar({ view, setView, open, onClose }: { view: View; setView:
             <span className="grid h-7 w-7 place-items-center rounded-lg bg-[#2dd4bf] text-[12px] font-extrabold text-[#07100f]">M</span>
             <span className="text-[14px] font-bold tracking-[.16em]">MITHRA</span>
           </button>
-          <button onClick={onClose} className="text-[#89939f] lg:hidden"><X size={17} /></button>
+          <button aria-label="Menüyü kapat" onClick={onClose} className="text-[#89939f] lg:hidden"><X size={17} /></button>
         </div>
         <nav className="flex-1 p-3">
           <p className="mb-2 px-3 pt-3 text-[9px] font-bold uppercase tracking-[.18em] text-[#56616c]">Yönetim</p>

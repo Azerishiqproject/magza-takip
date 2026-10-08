@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { CalendarDays, Check, CheckCircle2, Clock3, MapPin, MessageCircle, PackageCheck, Pencil, PhoneOutgoing, Plus, Search, UserRound, XCircle } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { CalendarDays, Check, CheckCircle2, Clock3, MapPin, MessageCircle, PackageCheck, Pencil, PhoneOutgoing, Plus, Search, Trash2, UserRound, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { money } from "@/lib/format";
-import type { Order, OrderStage, Store } from "@/lib/types";
+import type { NewOrder, Order, OrderChanges, OrderStage, Product, Store } from "@/lib/types";
 import { Field, Modal } from "./modal";
 
 type Filter = "active" | "completed" | "cancelled" | "all";
@@ -38,14 +38,18 @@ const stageOrder: OrderStage[] = ["new", "contacted", "responded", "addressed", 
 type Props = {
   store: Store;
   orders: Order[];
-  onAdd: (order: Pick<Order, "storeId" | "customerName" | "product" | "amount">) => Promise<Order>;
+  products: Product[];
+  onProducts: () => void;
+  onAdd: (order: NewOrder) => Promise<Order>;
   onStage: (id: string, stage: OrderStage, details?: Partial<Pick<Order, "responseNote" | "addressNote" | "shippingCost">>) => Promise<void>;
   onEdit: (id: string, details: Partial<Pick<Order, "responseNote" | "addressNote" | "shippingCost">>) => Promise<void>;
+  onUpdate: (id: string, details: OrderChanges) => Promise<{ persisted: boolean }>;
+  onDelete: (id: string) => Promise<{ persisted: boolean }>;
   onComplete: (id: string) => Promise<void>;
   onCancel: (id: string, chargeShipping: boolean, note: string) => Promise<void>;
 };
 
-export function OrdersView({ store, orders, onAdd, onStage, onEdit, onComplete, onCancel }: Props) {
+export function OrdersView({ store, orders, products, onProducts, onAdd, onStage, onEdit, onUpdate, onDelete, onComplete, onCancel }: Props) {
   const [filter, setFilter] = useState<Filter>("active");
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
   const [customStart, setCustomStart] = useState(() => { const date = new Date(); date.setDate(date.getDate() - 30); return inputDate(date); });
@@ -53,9 +57,10 @@ export function OrdersView({ store, orders, onAdd, onStage, onEdit, onComplete, 
   const [query, setQuery] = useState("");
   const [newOrderOpen, setNewOrderOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [action, setAction] = useState<"response" | "address" | "delivery" | "cancel" | null>(null);
+  const [action, setAction] = useState<"response" | "address" | "delivery" | "cancel" | "edit" | "delete" | null>(null);
   const [editingAction, setEditingAction] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const submissionLock = useRef(false);
   const selected = orders.find((item) => item.id === selectedId) ?? null;
 
   const counts = useMemo(() => ({
@@ -74,9 +79,10 @@ export function OrdersView({ store, orders, onAdd, onStage, onEdit, onComplete, 
   }).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)), [orders, filter, dateFilter, customStart, customEnd, query]);
 
   const run = async (job: () => Promise<void>) => {
-    if (submitting) return;
+    if (submissionLock.current) return;
+    submissionLock.current = true;
     setSubmitting(true);
-    try { await job(); } finally { setSubmitting(false); }
+    try { await job(); } catch (error) { toast.error(error instanceof Error ? error.message : "İşlem kaydedilemedi. Tekrar deneyin."); } finally { submissionLock.current = false; setSubmitting(false); }
   };
 
   const advance = async (order: Order, stage: Exclude<OrderStage, "new">) => {
@@ -126,16 +132,21 @@ export function OrdersView({ store, orders, onAdd, onStage, onEdit, onComplete, 
       </div>
 
       <div className="grid gap-3">
-        {filtered.map((order) => <OrderCard key={order.id} order={order} store={store} submitting={submitting} onAdvance={(stage) => void advance(order, stage)} onCancel={() => { setSelectedId(order.id); setAction("cancel"); }}/>) }
+        {filtered.map((order) => <OrderCard key={order.id} order={order} store={store} submitting={submitting} onAdvance={(stage) => void advance(order, stage)} onEdit={() => { setSelectedId(order.id); setAction("edit"); }} onDelete={() => { setSelectedId(order.id); setAction("delete"); }} onCancel={() => { setSelectedId(order.id); setAction("cancel"); }}/>) }
       </div>
       {!filtered.length && <div className="py-16 text-center"><PackageCheck className="mx-auto text-[#3f4a54]" size={28}/><p className="mt-3 text-[11px] font-semibold text-[#a0aab3]">Bu filtrelerde sipariş yok</p><p className="mt-1 text-[9px] text-[#66717c]">Durum, tarih veya arama filtresini değiştirebilirsiniz.</p></div>}
     </div>
 
-    <NewOrderModal open={newOrderOpen} store={store} submitting={submitting} onClose={() => setNewOrderOpen(false)} onSubmit={(data) => run(async () => { await onAdd(data); setNewOrderOpen(false); setFilter("active"); toast.success("Sipariş oluşturuldu"); })}/>
-    <ResponseModal open={action === "response"} editing={editingAction} initialNote={selected?.responseNote ?? ""} submitting={submitting} onClose={closeAction} onSubmit={(note) => selected && run(async () => { if (editingAction) await onEdit(selected.id, { responseNote: note }); else await onStage(selected.id, "responded", { responseNote: note }); setAction(null); toast.success(editingAction ? "Geri dönüş notu güncellendi" : "Geri dönüş kaydedildi"); })}/>
-    <AddressModal open={action === "address"} editing={editingAction} initialAddress={selected?.addressNote ?? ""} initialShipping={selected?.shippingCost ?? 0} store={store} submitting={submitting} onClose={closeAction} onSubmit={(addressNote, shippingCost) => selected && run(async () => { if (editingAction) await onEdit(selected.id, { addressNote, shippingCost }); else await onStage(selected.id, "addressed", { addressNote, shippingCost }); setAction(null); toast.success(editingAction ? "Konum ve kargo bilgisi güncellendi" : "Konum ve kargo bilgisi kaydedildi"); })}/>
+    {newOrderOpen && <NewOrderModal open products={products} onProducts={onProducts} store={store} submitting={submitting} onClose={() => { if (!submitting) setNewOrderOpen(false); }} onSubmit={(data) => run(async () => { await onAdd(data); setNewOrderOpen(false); setFilter("active"); toast.success("Sipariş oluşturuldu; stok düşüldü"); })}/>}
+    {action === "edit" && selected && <EditOrderModal products={products} key={selected.id} order={selected} store={store} submitting={submitting} onClose={closeAction} onSubmit={(changes) => void run(async () => { const result = await onUpdate(selected.id, changes); setAction(null); if (result.persisted) toast.success("Sipariş ve bağlı finans kayıtları güncellendi"); else toast.info("Sipariş demo modunda güncellendi; değişiklikler bu oturumda geçerli."); })}/>}
+    <Modal open={action === "delete" && Boolean(selected)} onClose={closeAction} title="Siparişi sil" description="Sipariş ve ona bağlı gelir/kargo gideri kayıtları silinir. Düşülen stok geri eklenir. Bu işlem geri alınamaz.">
+      <p className="mb-4 text-[11px] text-[#c4cdd4]">{selected?.customerName} · {selected?.product}</p>
+      <div className="flex gap-2"><button disabled={submitting} onClick={closeAction} className="flex-1 rounded-xl border border-[#303840] py-3 text-[10px] disabled:opacity-60">Vazgeç</button><button disabled={submitting || !selected} onClick={() => selected && void run(async () => { const result = await onDelete(selected.id); setAction(null); setSelectedId(null); if (result.persisted) toast.success("Sipariş ve bağlı finans kayıtları silindi"); else toast.info("Sipariş demo modunda silindi; değişiklikler bu oturumda geçerli."); })} className="flex-1 rounded-xl bg-[#ff7468] py-3 text-[10px] font-bold text-[#220b09] disabled:opacity-60">{submitting ? "Siliniyor…" : "Siparişi sil"}</button></div>
+    </Modal>
+    <ResponseModal key={`response-${selectedId}`} open={action === "response"} editing={editingAction} initialNote={selected?.responseNote ?? ""} submitting={submitting} onClose={closeAction} onSubmit={(note) => selected && run(async () => { if (editingAction) await onEdit(selected.id, { responseNote: note }); else await onStage(selected.id, "responded", { responseNote: note }); setAction(null); toast.success(editingAction ? "Geri dönüş notu güncellendi" : "Geri dönüş kaydedildi"); })}/>
+    <AddressModal key={`address-${selectedId}`} open={action === "address"} editing={editingAction} initialAddress={selected?.addressNote ?? ""} initialShipping={selected?.shippingCost ?? 0} store={store} submitting={submitting} onClose={closeAction} onSubmit={(addressNote, shippingCost) => selected && run(async () => { if (editingAction) await onEdit(selected.id, { addressNote, shippingCost }); else await onStage(selected.id, "addressed", { addressNote, shippingCost }); setAction(null); toast.success(editingAction ? "Konum ve kargo bilgisi güncellendi" : "Konum ve kargo bilgisi kaydedildi"); })}/>
     <DeliveryModal open={action === "delivery"} order={selected} store={store} submitting={submitting} onClose={closeAction} onConfirm={() => selected && run(async () => { await onComplete(selected.id); setAction(null); setFilter("completed"); toast.success("Sipariş tamamlandı; gelir ve kargo finansa aktarıldı"); })}/>
-    <CancelModal open={action === "cancel"} order={selected} store={store} submitting={submitting} onClose={closeAction} onConfirm={(charge, note) => selected && run(async () => { await onCancel(selected.id, charge, note); setAction(null); setFilter("cancelled"); toast.success("Sipariş iptal edildi"); })}/>
+    <CancelModal key={`cancel-${selectedId}`} open={action === "cancel"} order={selected} store={store} submitting={submitting} onClose={closeAction} onConfirm={(charge, note) => selected && run(async () => { await onCancel(selected.id, charge, note); setAction(null); setFilter("cancelled"); toast.success("Sipariş iptal edildi"); })}/>
   </>;
 }
 
@@ -143,11 +154,11 @@ function SummaryCard({ label, value, icon: Icon, color }: { label: string; value
   return <div className="panel flex items-center gap-3 rounded-2xl p-4"><span className="grid h-9 w-9 place-items-center rounded-xl" style={{ background: `${color}16`, color }}><Icon size={16}/></span><div><p className="text-[9px] text-[#707b85]">{label}</p><p className="mt-0.5 text-[18px] font-semibold">{value}</p></div></div>;
 }
 
-function OrderCard({ order, store, submitting, onAdvance, onCancel }: { order: Order; store: Store; submitting: boolean; onAdvance: (stage: Exclude<OrderStage, "new">) => void; onCancel: () => void }) {
+function OrderCard({ order, store, submitting, onAdvance, onCancel, onEdit, onDelete }: { order: Order; store: Store; submitting: boolean; onAdvance: (stage: Exclude<OrderStage, "new">) => void; onCancel: () => void; onEdit: () => void; onDelete: () => void }) {
   const currentIndex = stageOrder.indexOf(order.stage);
   const progress = order.status === "cancelled" ? 0 : (currentIndex / (stageOrder.length - 1)) * 100;
   return <article className="rounded-2xl border border-[#27313a] bg-[#10161c] p-4">
-    <div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-start gap-3"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#1a2828] text-[#6bd9cc]"><UserRound size={16}/></span><div className="min-w-0"><p className="truncate text-[11px] font-semibold">{order.customerName}</p><p className="mt-1 truncate text-[9px] text-[#78838d]">{order.product}</p><p className="mt-1.5 flex items-center gap-1 text-[7px] text-[#59656f]"><CalendarDays size={9}/>{new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short", year: "numeric" }).format(new Date(order.createdAt))}</p></div></div><div className="text-right"><p className="text-[12px] font-bold text-[#e7ecef]">{money(order.amount, store.currency)}</p><StatusBadge status={order.status}/></div></div>
+    <div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-start gap-3"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#1a2828] text-[#6bd9cc]"><UserRound size={16}/></span><div className="min-w-0"><p className="truncate text-[11px] font-semibold">{order.customerName}</p><p className="mt-1 truncate text-[9px] text-[#78838d]">{order.product}{order.productId && ` · ${order.quantity ?? 1} adet`}</p><p className="mt-1.5 flex items-center gap-1 text-[7px] text-[#59656f]"><CalendarDays size={9}/>{new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short", year: "numeric" }).format(new Date(order.createdAt))}</p></div></div><div className="text-right"><p className="text-[12px] font-bold text-[#e7ecef]">{money(order.amount, store.currency)}</p><StatusBadge status={order.status}/></div></div>
     <div className="my-4 h-1 overflow-hidden rounded-full bg-[#222b33]"><div className={`h-full rounded-full ${order.status === "cancelled" ? "bg-[#ff7468]" : "bg-[#2dd4bf]"}`} style={{ width: `${progress}%` }}/></div>
     <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-4">
       {steps.map(({ stage, title, description, icon: Icon }, index) => {
@@ -158,15 +169,63 @@ function OrderCard({ order, store, submitting, onAdvance, onCancel }: { order: O
         return <button key={stage} disabled={(!next && !editable) || submitting} onClick={() => onAdvance(stage)} title={editable ? `${title} bilgilerini düzenle` : undefined} className={`flex items-center gap-2.5 rounded-xl border p-2.5 text-left transition ${done ? `border-[#24423d] bg-[#14231f] ${editable ? "hover:border-[#4a8178] hover:bg-[#172a25]" : "cursor-default"}` : next ? "border-[#3a625d] bg-[#14201f] hover:border-[#55a99f]" : "cursor-not-allowed border-[#242d35] bg-[#0d1318] opacity-55"}`}><span className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg ${done ? "bg-[#245048] text-[#75e0d2]" : next ? "bg-[#233937] text-[#72dace]" : "bg-[#202830] text-[#68737e]"}`}>{done ? <Check size={13}/> : <Icon size={13}/>}</span><span className="min-w-0 flex-1"><span className="block text-[9px] font-semibold">{title}</span><span className="mt-0.5 block truncate text-[7px] text-[#707b85]">{description}</span></span>{editable && <Pencil size={11} className="shrink-0 text-[#5e9e94]"/>}</button>;
       })}
     </div>
-    {(order.responseNote || order.addressNote || order.shippingCost) && <div className="mt-3 rounded-xl bg-[#0b1116] p-3 text-[8px] leading-4 text-[#7d8993]">{order.responseNote && <p><span className="text-[#a9b2b9]">Geri dönüş:</span> {order.responseNote}</p>}{order.addressNote && <p><span className="text-[#a9b2b9]">Konum:</span> {order.addressNote}</p>}{Boolean(order.shippingCost) && <p><span className="text-[#a9b2b9]">Kargo:</span> {money(order.shippingCost ?? 0, store.currency)}</p>}</div>}
-    {order.status === "active" && <div className="mt-3 flex justify-end"><button onClick={onCancel} className="text-[8px] font-semibold text-[#b36f6b] hover:text-[#ff8177]">Siparişi iptal et</button></div>}
+    {Boolean(order.responseNote || order.addressNote || order.shippingCost) && <div className="mt-3 rounded-xl bg-[#0b1116] p-3 text-[8px] leading-4 text-[#7d8993]">{order.responseNote && <p><span className="text-[#a9b2b9]">Geri dönüş:</span> {order.responseNote}</p>}{order.addressNote && <p><span className="text-[#a9b2b9]">Konum:</span> {order.addressNote}</p>}{Boolean(order.shippingCost) && <p><span className="text-[#a9b2b9]">Kargo:</span> {money(order.shippingCost ?? 0, store.currency)}</p>}</div>}
+    <div className="mt-3 flex flex-wrap justify-end gap-3 border-t border-[#252e36] pt-3">
+      <button disabled={submitting} onClick={onEdit} aria-label={`${order.customerName} siparişini düzenle`} className="flex items-center gap-1.5 text-[9px] font-semibold text-[#8ccfc5] disabled:opacity-50"><Pencil size={12}/>Düzenle</button>
+      {order.status === "active" && <button disabled={submitting} onClick={onCancel} className="text-[9px] font-semibold text-[#b36f6b] hover:text-[#ff8177] disabled:opacity-50">Siparişi iptal et</button>}
+      <button disabled={submitting} onClick={onDelete} aria-label={`${order.customerName} siparişini sil`} className="flex items-center gap-1.5 text-[9px] font-semibold text-[#ff887d] disabled:opacity-50"><Trash2 size={12}/>Sil</button>
+    </div>
     {order.status === "cancelled" && <div className="mt-3 rounded-xl border border-[#422725] bg-[#271817] p-3 text-[8px] text-[#c9908b]"><p>İptal edildi{order.cancelledShippingCharged ? " · Kargo giderlere işlendi" : " · Kargo gideri işlenmedi"}</p>{order.cancellationNote && <p className="mt-1 text-[#92716e]">{order.cancellationNote}</p>}</div>}
   </article>;
 }
 
 function StatusBadge({ status }: { status: Order["status"] }) { const config = status === "active" ? ["Devam ediyor", "bg-[#182a34] text-[#67bde8]"] : status === "completed" ? ["Tamamlandı", "bg-[#17302b] text-[#68ddcd]"] : ["İptal edildi", "bg-[#351f1e] text-[#ff887d]"]; return <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[7px] font-bold ${config[1]}`}>{config[0]}</span>; }
 
-function NewOrderModal({ open, store, submitting, onClose, onSubmit }: { open: boolean; store: Store; submitting: boolean; onClose: () => void; onSubmit: (data: Pick<Order, "storeId" | "customerName" | "product" | "amount">) => void }) { return <Modal open={open} onClose={onClose} title="Yeni sipariş" description="Müşteri ve sipariş bilgilerini girin; takip akışı otomatik oluşturulsun."><form className="space-y-4" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); onSubmit({ storeId: store.id, customerName: String(data.get("customerName")).trim(), product: String(data.get("product")).trim(), amount: Number(data.get("amount")) }); }}><Field label="Kişi adı"><input required disabled={submitting} name="customerName" className="input" placeholder="Örn. Aylin Məmmədova"/></Field><Field label="Verdiği sipariş"><textarea required disabled={submitting} name="product" className="input min-h-20 resize-none" placeholder="Ürün, adet, renk veya diğer detaylar..."/></Field><Field label={`Sipariş tutarı (${store.currency})`}><input required disabled={submitting} min="0.01" step="0.01" type="number" name="amount" className="input" placeholder="0,00"/></Field><button disabled={submitting} className="w-full rounded-xl bg-[#2dd4bf] py-3 text-[10px] font-bold text-[#07110f] disabled:opacity-60">{submitting ? "Oluşturuluyor…" : "Siparişi oluştur"}</button></form></Modal>; }
+function OrderProductFields({ products, order, submitting, currency }: { products: Product[]; order?: Order; submitting: boolean; currency: Store["currency"] }) {
+  const [productId, setProductId] = useState(order?.productId ?? "");
+  const [quantity, setQuantity] = useState(String(order?.quantity ?? 1));
+  const [amount, setAmount] = useState(order ? String(order.amount) : "");
+  const selected = products.find((item) => item.id === productId);
+  const returnedStock = order?.productId === productId && order.stockDeducted ? order.quantity ?? 1 : 0;
+  const available = selected ? selected.stock + returnedStock : 0;
+  const cancelled = order?.status === "cancelled";
+  const legacy = Boolean(order && !order.productId);
+  const calculate = (product: Product | undefined, count: string) => product ? String(Math.round(product.price * Number(count) * 100) / 100) : "";
+  return <>
+    <Field label="Ürün"><select aria-label="Ürün" required={!legacy} disabled={submitting} name="productId" value={productId} onChange={(event) => { setProductId(event.target.value); setAmount(event.target.value ? calculate(products.find((item) => item.id === event.target.value), quantity) : order ? String(order.amount) : ""); }} className="input"><option value="">{legacy ? "Eski kayıt · stok takibi yok" : "Ürün seçin"}</option>{products.map((product) => <option key={product.id} value={product.id} disabled={product.id !== order?.productId && (!product.active || (!cancelled && product.stock === 0))}>{product.name}{product.sku ? ` (${product.sku})` : ""} · {product.stock} stok{!product.active ? " · Satışa kapalı" : ""}</option>)}</select></Field>
+    {legacy && !productId && <Field label="Verdiği sipariş"><textarea required disabled={submitting} name="product" defaultValue={order?.product} className="input min-h-16 resize-none"/></Field>}
+    {selected && <><div className="grid grid-cols-2 gap-3"><Field label="Adet"><input required disabled={submitting} type="number" name="quantity" min="1" max={cancelled ? undefined : available} step="1" value={quantity} onChange={(event) => { setQuantity(event.target.value); setAmount(calculate(selected, event.target.value)); }} className="input"/></Field><div className="rounded-xl border border-[#29333c] bg-[#0c1116] p-3"><p className="text-[8px] text-[#77818b]">{cancelled ? "Mevcut stok" : "Kullanılabilir stok"}</p><p className="mt-1 text-[13px] font-semibold text-[#68ddcd]">{cancelled ? selected.stock : available} adet</p></div></div><p className="text-[10px] leading-5 text-[#89939f]">Birim fiyat: {money(selected.price, currency)}. {cancelled ? "İptal edilen sipariş stoktan düşmez." : order ? "Ürün veya adet değişince stok farkı uygulanır." : "Sipariş kaydedilince seçilen adet stoktan düşülür."}</p></>}
+    <Field label={`Sipariş tutarı (${currency})`}><input required disabled={submitting} min="0.01" step="0.01" type="number" name="amount" value={amount} onChange={(event) => setAmount(event.target.value)} className="input" placeholder="0,00"/></Field>
+  </>;
+}
+
+function NewOrderModal({ open, store, products, submitting, onClose, onSubmit, onProducts }: { open: boolean; store: Store; products: Product[]; submitting: boolean; onClose: () => void; onSubmit: (data: NewOrder) => void; onProducts: () => void }) {
+  const available = products.some((item) => item.active && item.stock > 0);
+  return <Modal open={open} onClose={onClose} title="Yeni sipariş" description="Müşteriyi, ürünü ve adedi seçin. Sipariş oluştuğunda stok otomatik düşer.">
+    {!available ? <div className="space-y-4"><p className="text-[11px] leading-5 text-[#a7b1ba]">Bu mağazada satışa açık ve stokta olan ürün yok. Önce ürün oluşturun veya stok ekleyin.</p><button onClick={onProducts} className="w-full rounded-xl bg-[#2dd4bf] py-3 text-[10px] font-bold text-[#07110f]">Ürün ve stok ekle</button></div> : <form className="space-y-4" onSubmit={(event) => {
+      event.preventDefault(); const data = new FormData(event.currentTarget);
+      onSubmit({ storeId: store.id, customerName: String(data.get("customerName") ?? "").trim(), productId: String(data.get("productId") ?? ""), quantity: Number(data.get("quantity")), amount: Number(data.get("amount")) });
+    }}><Field label="Kişi adı"><input autoFocus required disabled={submitting} name="customerName" className="input" placeholder="Örn. Aylin Məmmədova"/></Field><OrderProductFields products={products} submitting={submitting} currency={store.currency}/><button disabled={submitting} className="w-full rounded-xl bg-[#2dd4bf] py-3 text-[10px] font-bold text-[#07110f] disabled:opacity-60">{submitting ? "Oluşturuluyor…" : "Siparişi oluştur"}</button></form>}
+  </Modal>;
+}
+
+function EditOrderModal({ order, store, products, submitting, onClose, onSubmit }: { order: Order; store: Store; products: Product[]; submitting: boolean; onClose: () => void; onSubmit: (changes: OrderChanges) => void }) {
+  return <Modal open onClose={onClose} title="Siparişi düzenle" description="Ürün veya adet değişirse stok farkı uygulanır. Tamamlanan siparişin finans kayıtları da güncellenir.">
+    <form className="space-y-4" onSubmit={(event) => {
+      event.preventDefault();
+      const data = new FormData(event.currentTarget);
+      onSubmit({ customerName: String(data.get("customerName")).trim(), ...(data.get("productId") ? { productId: String(data.get("productId")), quantity: Number(data.get("quantity")) } : { product: String(data.get("product") ?? "").trim() }), amount: Number(data.get("amount")), shippingCost: Number(data.get("shippingCost")), responseNote: String(data.get("responseNote") ?? "").trim(), addressNote: String(data.get("addressNote") ?? "").trim(), ...(order.status === "cancelled" ? { cancellationNote: String(data.get("cancellationNote") ?? "").trim(), cancelledShippingCharged: data.get("chargeShipping") === "on" } : {}) });
+    }}>
+      <Field label="Kişi adı"><input autoFocus required disabled={submitting} name="customerName" defaultValue={order.customerName} className="input"/></Field>
+      <OrderProductFields products={products} order={order} submitting={submitting} currency={store.currency}/>
+      <Field label={`Kargo (${store.currency})`}><input required disabled={submitting} min="0" step="0.01" type="number" name="shippingCost" defaultValue={order.shippingCost ?? 0} className="input"/></Field>
+      <Field label="Geri dönüş notu"><textarea disabled={submitting} name="responseNote" defaultValue={order.responseNote ?? ""} className="input min-h-16 resize-none"/></Field>
+      <Field label="Konum / adres"><textarea disabled={submitting} name="addressNote" defaultValue={order.addressNote ?? ""} className="input min-h-16 resize-none"/></Field>
+      {order.status === "cancelled" && <><Field label="İptal notu"><textarea disabled={submitting} name="cancellationNote" defaultValue={order.cancellationNote ?? ""} className="input min-h-16 resize-none"/></Field><label className="flex items-center gap-2 text-[11px] text-[#a7b1ba]"><input disabled={submitting} type="checkbox" name="chargeShipping" defaultChecked={order.cancelledShippingCharged}/>Kargo masrafını giderlere işle</label></>}
+      <div className="flex gap-2"><button type="button" disabled={submitting} onClick={onClose} className="rounded-xl border border-[#303840] px-4 py-3 text-[10px] disabled:opacity-60">Vazgeç</button><button disabled={submitting} className="flex-1 rounded-xl bg-[#2dd4bf] py-3 text-[10px] font-bold text-[#07110f] disabled:opacity-60">{submitting ? "Kaydediliyor…" : "Değişiklikleri kaydet"}</button></div>
+    </form>
+  </Modal>;
+}
 
 function ResponseModal({ open, editing, initialNote, submitting, onClose, onSubmit }: { open: boolean; editing: boolean; initialNote: string; submitting: boolean; onClose: () => void; onSubmit: (note: string) => void }) { return <Modal open={open} onClose={onClose} title={editing ? "Geri dönüşü düzenle" : "Müşteri geri dönüşü"} description="Gelen cevabı veya önemli detayları siparişe not edin."><form className="space-y-4" onSubmit={(event) => { event.preventDefault(); onSubmit(String(new FormData(event.currentTarget).get("note") || "").trim()); }}><Field label="Geri dönüş notu (isteğe bağlı)"><textarea autoFocus disabled={submitting} name="note" defaultValue={initialNote} className="input min-h-28 resize-none" placeholder="Müşterinin cevabı, talebi veya konuşma özeti..."/></Field><button disabled={submitting} className="w-full rounded-xl bg-[#2dd4bf] py-3 text-[10px] font-bold text-[#07110f] disabled:opacity-60">{editing ? "Değişiklikleri kaydet" : "Aşamayı tamamla"}</button></form></Modal>; }
 
@@ -174,4 +233,4 @@ function AddressModal({ open, editing, initialAddress, initialShipping, store, s
 
 function DeliveryModal({ open, order, store, submitting, onClose, onConfirm }: { open: boolean; order: Order | null; store: Store; submitting: boolean; onClose: () => void; onConfirm: () => void }) { return <Modal open={open} onClose={onClose} title="Teslimatı onayla" description="Bu işlem siparişi kapatır ve finans kayıtlarını oluşturur.">{order && <div className="space-y-4"><div className="rounded-xl border border-[#28343b] bg-[#0c1217] p-4"><p className="text-[10px] font-semibold">{order.customerName} — {order.product}</p><div className="mt-3 flex justify-between text-[9px]"><span className="text-[#77838d]">Gelire eklenecek</span><span className="font-bold text-[#68ddcd]">+{money(order.amount, store.currency)}</span></div><div className="mt-2 flex justify-between text-[9px]"><span className="text-[#77838d]">Gidere eklenecek kargo</span><span className="font-bold text-[#ff887d]">-{money(order.shippingCost ?? 0, store.currency)}</span></div></div><button disabled={submitting} onClick={onConfirm} className="w-full rounded-xl bg-[#2dd4bf] py-3 text-[10px] font-bold text-[#07110f] disabled:opacity-60">{submitting ? "Finansa aktarılıyor…" : "Teslim edildi, finansa aktar"}</button></div>}</Modal>; }
 
-function CancelModal({ open, order, store, submitting, onClose, onConfirm }: { open: boolean; order: Order | null; store: Store; submitting: boolean; onClose: () => void; onConfirm: (charge: boolean, note: string) => void }) { const [charge, setCharge] = useState(false); return <Modal open={open} onClose={onClose} title="Siparişi iptal et" description="Sipariş gelire yansımaz. Oluşan kargo masrafını giderlere ekleyebilirsiniz.">{order && <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); onConfirm(charge, String(new FormData(event.currentTarget).get("note") || "").trim()); }}><div className={`rounded-xl border p-3 ${order.shippingCost ? "border-[#493431] bg-[#251a19]" : "border-[#29323a] bg-[#10161b]"}`}><div className="flex items-center justify-between"><div><p className="text-[9px] font-semibold">Kargo masrafı giderlere girsin mi?</p><p className="mt-1 text-[8px] text-[#827974]">Kayıtlı kargo: {money(order.shippingCost ?? 0, store.currency)}</p></div><button type="button" disabled={!order.shippingCost} onClick={() => setCharge(!charge)} className={`relative h-6 w-11 rounded-full transition disabled:cursor-not-allowed disabled:opacity-40 ${charge ? "bg-[#f07268]" : "bg-[#303943]"}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${charge ? "left-6" : "left-1"}`}/></button></div></div><Field label="İptal notu (isteğe bağlı)"><textarea disabled={submitting} name="note" className="input min-h-20 resize-none" placeholder="Müşteri reddetti, ulaşılamadı..."/></Field><button disabled={submitting} className="w-full rounded-xl bg-[#e8665d] py-3 text-[10px] font-bold text-white disabled:opacity-60">{submitting ? "İptal ediliyor…" : "Siparişi iptal et"}</button></form>}</Modal>; }
+function CancelModal({ open, order, store, submitting, onClose, onConfirm }: { open: boolean; order: Order | null; store: Store; submitting: boolean; onClose: () => void; onConfirm: (charge: boolean, note: string) => void }) { const [charge, setCharge] = useState(false); return <Modal open={open} onClose={onClose} title="Siparişi iptal et" description="Sipariş gelire yansımaz ve düşülen stok geri eklenir. Kargo masrafını giderlere ekleyebilirsiniz.">{order && <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); onConfirm(charge, String(new FormData(event.currentTarget).get("note") || "").trim()); }}><div className={`rounded-xl border p-3 ${order.shippingCost ? "border-[#493431] bg-[#251a19]" : "border-[#29323a] bg-[#10161b]"}`}><div className="flex items-center justify-between"><div><p className="text-[9px] font-semibold">Kargo masrafı giderlere girsin mi?</p><p className="mt-1 text-[8px] text-[#827974]">Kayıtlı kargo: {money(order.shippingCost ?? 0, store.currency)}</p></div><button type="button" disabled={!order.shippingCost} onClick={() => setCharge(!charge)} className={`relative h-6 w-11 rounded-full transition disabled:cursor-not-allowed disabled:opacity-40 ${charge ? "bg-[#f07268]" : "bg-[#303943]"}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${charge ? "left-6" : "left-1"}`}/></button></div></div><Field label="İptal notu (isteğe bağlı)"><textarea disabled={submitting} name="note" className="input min-h-20 resize-none" placeholder="Müşteri reddetti, ulaşılamadı..."/></Field><button disabled={submitting} className="w-full rounded-xl bg-[#e8665d] py-3 text-[10px] font-bold text-white disabled:opacity-60">{submitting ? "İptal ediliyor…" : "Siparişi iptal et"}</button></form>}</Modal>; }

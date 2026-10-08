@@ -7,7 +7,7 @@ export function Modal({ open, title, description, onClose, children }: { open: b
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onMouseDown={onClose}>
-      <div className="panel w-full max-w-md rounded-2xl p-5" onMouseDown={(event) => event.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-label={title} className="panel max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-2xl p-5" onMouseDown={(event) => event.stopPropagation()}>
         <div className="mb-5 flex items-start justify-between gap-4">
           <div><h2 className="text-[15px] font-semibold">{title}</h2>{description && <p className="mt-1 text-[11px] leading-5 text-[#89939f]">{description}</p>}</div>
           <button onClick={onClose} className="rounded-lg p-1.5 text-[#89939f] hover:bg-white/5 hover:text-white" aria-label="Kapat"><X size={16} /></button>

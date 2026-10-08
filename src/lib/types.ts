@@ -7,6 +7,12 @@ export interface Store {
   currency: "TRY" | "USD" | "EUR" | "AZN";
   status: "active" | "paused";
   color: string;
+  folderId?: string | null;
+}
+
+export interface StoreFolder {
+  id: string;
+  name: string;
 }
 
 export interface Category {
@@ -32,11 +38,26 @@ export interface Transaction {
 export type OrderStage = "new" | "contacted" | "responded" | "addressed" | "delivered";
 export type OrderStatus = "active" | "completed" | "cancelled";
 
+export interface Product {
+  id: string;
+  storeId: string;
+  name: string;
+  sku: string;
+  price: number;
+  stock: number;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Order {
   id: string;
   storeId: string;
   customerName: string;
   product: string;
+  productId?: string | null;
+  quantity?: number;
+  stockDeducted?: boolean;
   amount: number;
   stage: OrderStage;
   status: OrderStatus;
@@ -52,3 +73,6 @@ export interface Order {
 }
 
 export type Period = "day" | "week" | "month" | "year" | "custom";
+
+export type NewOrder = Pick<Order, "storeId" | "customerName" | "amount"> & { productId: string; quantity: number };
+export type OrderChanges = Partial<Pick<Order, "customerName" | "product" | "productId" | "quantity" | "amount" | "responseNote" | "addressNote" | "shippingCost" | "cancellationNote" | "cancelledShippingCharged">>;
