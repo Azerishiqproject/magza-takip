@@ -13,7 +13,8 @@ Shopify mağazaları için çoklu mağaza, gelir/gider, kategori ve kârlılık 
 - İşlemler ve son hareketler listesinden kayıt düzenleme; siparişe bağlı tutarları siparişle birlikte güncelleme
 - Mağaza bazında ürün adı, ürün kodu, birim fiyat ve başlangıç stoğu oluşturma
 - Stok ekleme/azaltma, az stok ve tükenen ürün filtreleri, satışa açık/kapalı ürün yönetimi
-- Müşteri, ürün ve adet seçerek sipariş oluşturma; toplam tutarı otomatik hesaplayıp gerektiğinde değiştirme
+- Müşteri, ürün ve adet seçerek sipariş oluşturma; “Ürün ekle” ile tek siparişte birden fazla ürün/paket (bundle) oluşturma
+- Ürün satırlarını ekleme/çıkarma, satır ve paket toplamını otomatik hesaplama; paket indirimi için sipariş tutarını değiştirme
 - Sipariş oluşturulunca stoktan düşme; ürün/adet düzenlenince stok farkını uygulama
 - İptal veya silmede daha önce düşülen stoğu yalnızca bir kez geri ekleme; teslimatta tekrar stok düşmeme
 - Sipariş, stok ve bağlı finans kayıtlarını Firestore transaction ile birlikte güncelleme; yetersiz stokta siparişi engelleme
@@ -54,7 +55,9 @@ Kullanılan koleksiyonlar:
 - `categories`: `storeId`, `name`, `type`, `color`
 - `transactions`: `storeId`, `categoryId`, `type`, `title`, `amount`, `date`, `note`
 - `products`: `storeId`, `name`, `sku`, `price`, `stock`, `active`, `createdAt`, `updatedAt`
-- `orders`: `storeId`, `customerName`, `product` (ürün adı), `productId`, `quantity`, `stockDeducted`, `amount`, `stage`, `status`, aşama notları ve kargo bilgisi
+- `orders`: `storeId`, `customerName`, `product` (ürün adı), `productId`, `quantity`, `items` (ürün, adet, ad/fiyat bilgileri), `stockDeducted`, `amount`, `stage`, `status`, aşama notları ve kargo bilgisi
+
+Çok ürünlü siparişler `items` listesinde saklanır; her satır ürün kimliği, adet, sipariş anındaki ürün adı ve birim fiyatını içerir. Her ürünün stoğu aynı Firestore transaction içinde güncellenir: satır ekleme/çıkarma ve adet değişikliklerinde yalnızca stok farkı uygulanır. Teslimatta paket toplamı tek gelir kaydı oluşturur. Eski tek ürünlü kayıtlar da okunur; düzenleme sırasında ek ürün seçilerek pakete dönüştürülebilir.
 
 Eski, ürün bağlantısı olmayan siparişler korunur ve otomatik olarak stoktan düşülmez. Düzenleme sırasında ürün seçilirse stok takibine bağlanırlar. Sipariş oluşturulurken stok düşülür, teslimatta ikinci kez düşülmez. İptal veya silme, daha önce düşülmüş stoğu geri ekler; iptal edilmiş siparişin daha sonra silinmesi stok iadesini tekrarlamaz. Ürün adı/fiyatı değişiklikleri mevcut siparişlerin geçmiş bilgilerini değiştirmez. Stok tutarlılığı testleri Firestore transaction davranışını taklit eden yerel test katmanında çalışır.
 

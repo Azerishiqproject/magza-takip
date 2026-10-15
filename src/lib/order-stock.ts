@@ -1,12 +1,21 @@
+import { getOrderItems } from "./order-items";
 import type { Order, Product } from "./types";
 
 export function orderStockChanges(previous: Order | null, next: Order | null) {
   const changes = new Map<string, number>();
-  const add = (id: string, quantity: number) => changes.set(id, (changes.get(id) ?? 0) + quantity);
-  if (previous?.productId && previous.stockDeducted) add(previous.productId, previous.quantity ?? 1);
-  if (next?.productId) {
-    if (!Number.isSafeInteger(next.quantity) || next.quantity! <= 0) throw new Error("Adet pozitif bir tam sayı olmalıdır.");
-    if (next.status !== "cancelled") add(next.productId, -next.quantity!);
+  const add = (id: string, quantity: number) => {
+    const total = (changes.get(id) ?? 0) + quantity;
+    if (!Number.isSafeInteger(total)) throw new Error("Toplam adet geçerli bir tam sayı olmalıdır.");
+    changes.set(id, total);
+  };
+  if (previous?.stockDeducted) for (const item of getOrderItems(previous)) add(item.productId, item.quantity);
+  if (next) {
+    if (next.items !== undefined && (!Array.isArray(next.items) || !next.items.length)) throw new Error("Siparişe en az bir ürün ekleyin.");
+    for (const item of getOrderItems(next)) {
+      if (!item.productId?.trim()) throw new Error("Her satır için bir ürün seçin.");
+      if (!Number.isSafeInteger(item.quantity) || item.quantity <= 0) throw new Error("Adet pozitif bir tam sayı olmalıdır.");
+      if (next.status !== "cancelled") add(item.productId, -item.quantity);
+    }
   }
   return changes;
 }

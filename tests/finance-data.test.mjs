@@ -387,3 +387,123 @@ test("quantity edits preserve manually edited shipping descriptions, notes, date
   assert.equal(app.render().transactions.find((item) => item.type === "income").title, "Aylin — Çanta × 3");
   assert.equal(app.cloud.get("products/p1").stock, 7);
 });
+
+const bundleProducts = [baseProduct, { ...baseProduct, id: "p2", name: "Cüzdan", price: 25, stock: 8 }, { ...baseProduct, id: "p3", name: "Kemer", price: 30, stock: 6 }];
+const bundleInput = { storeId: "s1", customerName: "Paket müşterisi", amount: 175, items: [{ productId: "p1", quantity: 2 }, { productId: "p2", quantity: 3 }] };
+
+test("bundle creation deducts each product and stores names and unit prices in one transaction", async () => {
+  const app = harness(); const order = await app.online({ products: bundleProducts, orders: [] }).addOrder(bundleInput);
+  assert.equal(app.cloud.get("products/p1").stock, 8);
+  assert.equal(app.cloud.get("products/p2").stock, 5);
+  assert.equal(app.cloud.get("products/p3").stock, 6);
+  assert.deepEqual(order.items.map((item) => [item.product, item.quantity, item.unitPrice]), [["Çanta", 2, 50], ["Cüzdan", 3, 25]]);
+  assert.equal(order.productId, null); assert.equal(order.stockDeducted, true);
+  assert.equal(order.amount, 175); assert.equal(app.commits.length, 1);
+});
+
+test("one insufficient product rejects the entire bundle without deducting the other products", async () => {
+  const app = harness(); const data = app.online({ products: bundleProducts, orders: [] });
+  await assert.rejects(data.addOrder({ ...bundleInput, items: [{ productId: "p1", quantity: 2 }, { productId: "p2", quantity: 9 }] }), /yeterli stok/);
+  assert.equal(app.cloud.get("products/p1").stock, 10); assert.equal(app.cloud.get("products/p2").stock, 8);
+  assert.equal(app.render().orders.length, 0); assert.equal(app.commits.length, 0);
+});
+
+test("duplicate product lines are counted together for stock and cannot bypass the stock limit", async () => {
+  const app = harness(); const data = app.online({ products: bundleProducts, orders: [] });
+  await assert.rejects(data.addOrder({ ...bundleInput, items: [{ productId: "p1", quantity: 6 }, { productId: "p1", quantity: 5 }] }), /yeterli stok/);
+  const order = await data.addOrder({ ...bundleInput, items: [{ productId: "p1", quantity: 2 }, { productId: "p1", quantity: 3 }] });
+  assert.equal(app.cloud.get("products/p1").stock, 5);
+  await app.render().cancelOrder(order.id, false);
+  assert.equal(app.cloud.get("products/p1").stock, 10);
+});
+
+test("bundle editing restores removed products, adjusts quantities and deducts newly added products", async () => {
+  const app = harness(); const order = await app.online({ products: bundleProducts, orders: [] }).addOrder(bundleInput);
+  await app.render().updateOrder(order.id, { items: [{ productId: "p2", quantity: 4 }, { productId: "p3", quantity: 2 }], amount: 160 });
+  assert.equal(app.cloud.get("products/p1").stock, 10);
+  assert.equal(app.cloud.get("products/p2").stock, 4);
+  assert.equal(app.cloud.get("products/p3").stock, 4);
+  assert.deepEqual(app.render().orders[0].items.map((item) => item.product), ["Cüzdan", "Kemer"]);
+  await app.render().updateOrder(order.id, { items: [{ productId: "p3", quantity: 1 }], amount: 30 });
+  assert.equal(app.cloud.get("products/p2").stock, 8); assert.equal(app.cloud.get("products/p3").stock, 5);
+  assert.equal(app.render().orders[0].productId, "p3");
+});
+
+test("failed bundle edits roll back all stock differences and leave the order unchanged", async () => {
+  const app = harness(); const order = await app.online({ products: bundleProducts, orders: [] }).addOrder(bundleInput);
+  await assert.rejects(app.render().updateOrder(order.id, { items: [{ productId: "p1", quantity: 1 }, { productId: "p3", quantity: 7 }] }), /yeterli stok/);
+  assert.equal(app.cloud.get("products/p1").stock, 8); assert.equal(app.cloud.get("products/p2").stock, 5); assert.equal(app.cloud.get("products/p3").stock, 6);
+  assert.equal(app.render().orders[0].items.length, 2);
+  app.fail();
+  await assert.rejects(app.render().updateOrder(order.id, { items: [{ productId: "p3", quantity: 2 }] }), /write failed/);
+  assert.equal(app.cloud.get("products/p1").stock, 8); assert.equal(app.cloud.get("products/p3").stock, 6);
+});
+
+test("bundle cancellation restores all products once and later deletion does not refund again", async () => {
+  const app = harness(); const order = await app.online({ products: bundleProducts, orders: [] }).addOrder(bundleInput);
+  await app.render().cancelOrder(order.id, false);
+  assert.equal(app.cloud.get("products/p1").stock, 10); assert.equal(app.cloud.get("products/p2").stock, 8);
+  await app.render().updateOrder(order.id, { items: [{ productId: "p3", quantity: 3 }] });
+  assert.equal(app.cloud.get("products/p3").stock, 6);
+  await app.render().deleteOrder(order.id);
+  assert.equal(app.cloud.get("products/p1").stock, 10); assert.equal(app.cloud.get("products/p2").stock, 8); assert.equal(app.cloud.get("products/p3").stock, 6);
+});
+
+test("completed bundle has one total income and quantity edits keep finances and stock in sync", async () => {
+  const app = harness(); const order = await app.online({ products: bundleProducts, orders: [] }).addOrder({ ...bundleInput, amount: 150 });
+  await app.render().updateOrderStage(order.id, "contacted"); await app.render().updateOrderStage(order.id, "responded"); await app.render().updateOrderStage(order.id, "addressed", { shippingCost: 10 }); await app.render().completeOrder(order.id);
+  assert.equal(app.cloud.get("products/p1").stock, 8); assert.equal(app.cloud.get("products/p2").stock, 5);
+  assert.equal(app.render().transactions.filter((item) => item.type === "income").length, 1);
+  assert.equal(app.cloud.get(`transactions/order-income-${order.id}`).amount, 150);
+  assert.equal(app.cloud.get(`transactions/order-income-${order.id}`).title, "Paket müşterisi — Çanta × 2 + Cüzdan × 3");
+  await app.render().updateOrder(order.id, { items: [{ productId: "p1", quantity: 1 }, { productId: "p2", quantity: 2 }], amount: 90 });
+  assert.equal(app.cloud.get("products/p1").stock, 9); assert.equal(app.cloud.get("products/p2").stock, 6);
+  assert.equal(app.cloud.get(`transactions/order-income-${order.id}`).amount, 90);
+  assert.equal(app.cloud.get(`transactions/order-income-${order.id}`).title, "Paket müşterisi — Çanta × 1 + Cüzdan × 2");
+  await app.render().deleteOrder(order.id);
+  assert.equal(app.cloud.get("products/p1").stock, 10); assert.equal(app.cloud.get("products/p2").stock, 8);
+  assert.equal(app.cloud.has(`transactions/order-income-${order.id}`), false);
+});
+
+test("upgrading an older single-product order to a bundle does not deduct the original stock twice", async () => {
+  const app = harness(); const oldOrder = { ...baseOrder, status: "active", stage: "new", productId: "p1", quantity: 2, stockDeducted: true };
+  await app.online({ products: [{ ...baseProduct, stock: 8 }, bundleProducts[1]], orders: [oldOrder] }).updateOrder("o1", { items: [{ productId: "p1", quantity: 2 }, { productId: "p2", quantity: 3 }], amount: 175 });
+  assert.equal(app.cloud.get("products/p1").stock, 8); assert.equal(app.cloud.get("products/p2").stock, 5);
+  await app.render().cancelOrder("o1", false);
+  assert.equal(app.cloud.get("products/p1").stock, 10); assert.equal(app.cloud.get("products/p2").stock, 8);
+});
+
+test("bundle lines preserve historical names and prices when products are edited or rows reordered", async () => {
+  const app = harness(); const order = await app.online({ products: bundleProducts, orders: [] }).addOrder(bundleInput);
+  await app.render().updateProduct("p1", { name: "Yeni çanta", sku: "YENI", price: 100, active: true });
+  await app.render().updateOrder(order.id, { items: [{ productId: "p2", quantity: 2 }, { productId: "p1", quantity: 1 }] });
+  const item = app.render().orders[0].items.find((entry) => entry.productId === "p1");
+  assert.equal(item.product, "Çanta"); assert.equal(item.unitPrice, 50);
+  assert.equal(app.cloud.get("products/p1").stock, 9);
+});
+
+test("empty bundles, invalid rows and products from another store are rejected atomically", async () => {
+  const app = harness(); const data = app.online({ products: [...bundleProducts, { ...baseProduct, id: "foreign", storeId: "s2" }], orders: [] });
+  for (const items of [[], [{ productId: "", quantity: 1 }], [{ productId: "p1", quantity: 0 }], [{ productId: "p1", quantity: 1.5 }], [{ productId: "p1", quantity: 1 }, { productId: "foreign", quantity: 1 }]]) await assert.rejects(data.addOrder({ ...bundleInput, items }));
+  assert.equal(app.render().orders.length, 0); assert.equal(app.cloud.get("products/p1").stock, 10);
+  const order = await data.addOrder(bundleInput);
+  await assert.rejects(app.render().updateOrder(order.id, { items: [] }), /en az bir ürün/);
+  assert.equal(app.render().orders[0].items.length, 2);
+});
+
+test("concurrent bundles cannot oversell a shared product or partially deduct their other products", async () => {
+  const app = harness(); const data = app.online({ products: [{ ...baseProduct, stock: 3 }, bundleProducts[1], bundleProducts[2]], orders: [] });
+  const results = await Promise.allSettled([data.addOrder({ ...bundleInput, items: [{ productId: "p1", quantity: 2 }, { productId: "p2", quantity: 1 }] }), data.addOrder({ ...bundleInput, items: [{ productId: "p1", quantity: 2 }, { productId: "p3", quantity: 1 }] })]);
+  assert.equal(results.filter((item) => item.status === "fulfilled").length, 1);
+  assert.equal(app.cloud.get("products/p1").stock, 1);
+  assert.equal(app.cloud.get("products/p2").stock + app.cloud.get("products/p3").stock, 13);
+  assert.equal(app.render().orders.length, 1);
+});
+
+test("three different products can be saved and deleted as one bundle", async () => {
+  const app = harness(); const order = await app.online({ products: bundleProducts, orders: [] }).addOrder({ ...bundleInput, amount: 190, items: [{ productId: "p1", quantity: 1 }, { productId: "p2", quantity: 2 }, { productId: "p3", quantity: 3 }] });
+  assert.equal(order.items.length, 3);
+  assert.equal(app.cloud.get("products/p1").stock, 9); assert.equal(app.cloud.get("products/p2").stock, 6); assert.equal(app.cloud.get("products/p3").stock, 3);
+  await app.render().deleteOrder(order.id);
+  assert.equal(app.cloud.get("products/p1").stock, 10); assert.equal(app.cloud.get("products/p2").stock, 8); assert.equal(app.cloud.get("products/p3").stock, 6);
+});

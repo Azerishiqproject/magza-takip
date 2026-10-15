@@ -7,6 +7,7 @@ import { demoCategories, demoProducts, demoStores, demoTransactions } from "@/li
 import type { Category, Order, OrderChanges, OrderStage, NewOrder, Product, Store, StoreFolder, Transaction } from "@/lib/types";
 
 import { reconcileOrderTransactions } from "@/lib/order-transactions";
+import { getOrderItems } from "@/lib/order-items";
 import { applyStockChange, orderStockChanges } from "@/lib/order-stock";
 
 export function useFinanceData() {
@@ -278,7 +279,9 @@ export function useFinanceData() {
         if (storeSnapshot ? !storeSnapshot.exists() : !stores.some((item) => item.id === storeId)) throw new Error("Mağaza bulunamadı.");
       }
       const deltas = orderStockChanges(previous, order);
-      const productIds = new Set([...deltas.keys(), ...(order?.productId ? [order.productId] : [])]);
+      const nextItems = getOrderItems(order).map((item) => ({ ...item }));
+      const previousItems = getOrderItems(previous);
+      const productIds = new Set([...deltas.keys(), ...nextItems.map((item) => item.productId)]);
       const updatedProducts: Product[] = [];
       for (const productId of productIds) {
         const productSnapshot = persistence ? await persistence.get(doc(db, "products", productId)) : null;
@@ -286,11 +289,22 @@ export function useFinanceData() {
         if (!product) throw new Error("Siparişin ürünü bulunamadı.");
         const updated = applyStockChange(product, deltas.get(productId) ?? 0, storeId);
         if (deltas.get(productId)) updatedProducts.push(updated);
+        for (const item of nextItems.filter((entry) => entry.productId === productId)) {
+          const original = previousItems.find((entry) => entry.productId === productId);
+          item.product = original?.product ?? product.name;
+          item.unitPrice = original?.unitPrice ?? product.price;
+        }
         if (order?.productId === productId && previous?.productId !== productId) order.product = product.name;
       }
       if (order) {
+        if (order.items !== undefined) {
+          order.items = nextItems;
+          order.product = nextItems.map((item) => item.product).join(" + ");
+          order.productId = nextItems.length === 1 ? nextItems[0].productId : null;
+          order.quantity = nextItems.reduce((sum, item) => sum + item.quantity, 0);
+        }
         order.customerName = order.customerName.trim(); order.product = order.product.trim();
-        order.stockDeducted = Boolean(order.productId && order.status !== "cancelled");
+        order.stockDeducted = Boolean(nextItems.length && order.status !== "cancelled");
         if (!order.customerName || !order.product || !Number.isFinite(order.amount) || order.amount <= 0 || !Number.isFinite(order.shippingCost ?? 0) || (order.shippingCost ?? 0) < 0) throw new Error("Müşteri, ürün, sipariş tutarı ve kargo giderini kontrol edin.");
       }
       const financialSnapshots = persistence ? await Promise.all([`order-income-${id}`, `order-shipping-${id}`].map((transactionId) => persistence.get(doc(db, "transactions", transactionId)))) : null;
@@ -325,9 +339,10 @@ export function useFinanceData() {
   };
 
   const addOrder = async (data: NewOrder) => {
-    if (!data.productId) throw new Error("Bir ürün seçin.");
+    if (!("items" in data) && !data.productId) throw new Error("Bir ürün seçin.");
     const id = crypto.randomUUID(); const now = new Date().toISOString();
-    const result = await mutateOrder(id, () => ({ ...data, id, product: "", stage: "new", status: "active", createdAt: now, updatedAt: now }));
+    const selection = "items" in data ? { items: data.items.map((item) => ({ productId: item.productId, quantity: item.quantity, product: "" })) } : { productId: data.productId, quantity: data.quantity };
+    const result = await mutateOrder(id, () => ({ storeId: data.storeId, customerName: data.customerName, amount: data.amount, ...selection, id, product: "", stage: "new", status: "active", createdAt: now, updatedAt: now }));
     return result.order!;
   };
 
@@ -335,7 +350,14 @@ export function useFinanceData() {
     const result = await mutateOrder(id, (previous) => {
       if (!previous) throw new Error("Sipariş bulunamadı.");
       if (previous.productId && "productId" in changes && !changes.productId) throw new Error("Stok takibi yapılan siparişten ürün kaldırılamaz.");
-      return { ...previous, ...changes, updatedAt: new Date().toISOString() };
+      const { items, ...fields } = changes;
+      const next = { ...previous, ...fields, updatedAt: new Date().toISOString() };
+      if (items !== undefined) next.items = items.map((item) => ({ productId: item.productId, quantity: item.quantity, product: "" }));
+      else if (previous.items && ("productId" in changes || "quantity" in changes)) {
+        if (previous.items.length !== 1) throw new Error("Paket siparişinin ürünlerini satır bazında düzenleyin.");
+        next.items = [{ ...previous.items[0], productId: changes.productId ?? previous.items[0].productId, quantity: changes.quantity ?? previous.items[0].quantity }];
+      }
+      return next;
     });
     return { persisted: result.persisted };
   };

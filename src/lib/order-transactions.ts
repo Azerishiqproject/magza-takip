@@ -1,3 +1,4 @@
+import { orderProductLabel } from "./order-items";
 import type { Order, Transaction } from "./types";
 
 const localDate = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -10,8 +11,8 @@ export function reconcileOrderTransactions(order: Order, previous: Order, transa
   const shipping = transactions.find((item) => item.id === shippingId);
   const date = localDate(new Date(order.completedAt ?? order.cancelledAt ?? order.createdAt));
   const renamed = order.customerName !== previous.customerName || order.product !== previous.product;
-  const quantityChanged = order.quantity !== previous.quantity;
-  const productLabel = order.productId ? `${order.product} × ${order.quantity ?? 1}` : order.product;
+  const quantityChanged = orderProductLabel(order) !== orderProductLabel(previous);
+  const productLabel = orderProductLabel(order);
   const result: Transaction[] = [];
   if (order.status === "completed") {
     result.push({

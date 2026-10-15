@@ -50,6 +50,16 @@ export interface Product {
   updatedAt: string;
 }
 
+export interface OrderItemInput {
+  productId: string;
+  quantity: number;
+}
+
+export interface OrderItem extends OrderItemInput {
+  product: string;
+  unitPrice?: number;
+}
+
 export interface Order {
   id: string;
   storeId: string;
@@ -58,6 +68,7 @@ export interface Order {
   productId?: string | null;
   quantity?: number;
   stockDeducted?: boolean;
+  items?: OrderItem[];
   amount: number;
   stage: OrderStage;
   status: OrderStatus;
@@ -74,5 +85,5 @@ export interface Order {
 
 export type Period = "day" | "week" | "month" | "year" | "custom";
 
-export type NewOrder = Pick<Order, "storeId" | "customerName" | "amount"> & { productId: string; quantity: number };
-export type OrderChanges = Partial<Pick<Order, "customerName" | "product" | "productId" | "quantity" | "amount" | "responseNote" | "addressNote" | "shippingCost" | "cancellationNote" | "cancelledShippingCharged">>;
+export type NewOrder = Pick<Order, "storeId" | "customerName" | "amount"> & (OrderItemInput | { items: OrderItemInput[] });
+export type OrderChanges = Partial<Pick<Order, "customerName" | "product" | "productId" | "quantity" | "amount" | "responseNote" | "addressNote" | "shippingCost" | "cancellationNote" | "cancelledShippingCharged">> & { items?: OrderItemInput[] };
