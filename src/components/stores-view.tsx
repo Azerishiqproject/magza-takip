@@ -1,10 +1,11 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Folder, FolderPlus, Pencil, Plus, Store as StoreIcon, Trash2 } from "lucide-react";
+import { Folder, FolderPlus, Pencil, Plus, Power, Store as StoreIcon, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { money } from "@/lib/format";
 import type { Category, Order, Product, Store, StoreFolder, Transaction } from "@/lib/types";
+import { StoresAnalytics } from "./stores-analytics";
 import { Field, Modal } from "./modal";
 
 type Result = { persisted: boolean };
@@ -53,6 +54,8 @@ export function StoresView({ stores, products, folders, transactions, orders, ca
       <div><h2 className="text-[20px] font-semibold tracking-[-.03em]">Mağazalar ve klasörler</h2><p className="mt-1 text-[10px] text-[#77818b]">Mağazaları istediğiniz klasörlerde toplayın, düzenleyin veya kullanmadıklarınızı silin.</p></div>
       <div className="flex gap-2"><button disabled={submitting} onClick={() => setFolderEditor("new")} className="flex items-center gap-2 rounded-xl border border-[#303840] px-3.5 py-2 text-[10px] font-semibold disabled:opacity-50"><FolderPlus size={14}/>Yeni klasör</button><button onClick={onAdd} disabled={submitting} className="flex items-center gap-2 rounded-xl bg-[#2dd4bf] px-3.5 py-2 text-[10px] font-bold text-[#07110f] disabled:opacity-50"><Plus size={14}/>Mağaza oluştur</button></div>
     </div>
+    <StoresAnalytics orders={orders} stores={stores} folders={folders} categories={categories} transactions={transactions}/>
+    <h3 className="mb-4 text-[14px] font-semibold">Mağaza yönetimi</h3>
     <div className="space-y-6">
       {groups.map((group) => {
         const members = stores.filter((store) => group.id ? store.folderId === group.id : !store.folderId || !folders.some((folder) => folder.id === store.folderId));
@@ -69,7 +72,7 @@ export function StoresView({ stores, products, folders, transactions, orders, ca
                 <div className="mt-4 border-t border-[#252d35] pt-3"><p className="text-[8px] uppercase tracking-[.12em] text-[#626d77]">Toplam net sonuç</p><p className={`mt-1.5 text-[16px] font-semibold ${net >= 0 ? "text-[#69dccc]" : "text-[#ff8177]"}`}>{money(net, store.currency)}</p></div>
               </button>
               <div className="mt-4"><Field label="Klasör"><select aria-label={`${store.name} mağazasının klasörü`} className="input" disabled={submitting} value={folders.some((folder) => folder.id === store.folderId) ? store.folderId! : ""} onChange={(event) => void run(() => onUpdate(store.id, { folderId: event.target.value || null }), "Mağaza klasörü güncellendi")}><option value="">Klasörsüz</option>{folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></Field></div>
-              <div className="mt-3 flex justify-between gap-3"><button disabled={submitting} onClick={() => setEditingStore(store)} className="flex items-center gap-1.5 text-[10px] text-[#8ccfc5] disabled:opacity-50"><Pencil size={12}/>Düzenle</button><button disabled={submitting} onClick={() => { setDeletingStore(store); setConfirmation(""); }} aria-label={`${store.name} mağazasını sil`} className="flex items-center gap-1.5 text-[10px] text-[#ff887d] disabled:opacity-50"><Trash2 size={12}/>Sil</button></div>
+              <div className="mt-3 flex flex-wrap justify-between gap-3"><button disabled={submitting} onClick={() => setEditingStore(store)} className="flex items-center gap-1.5 text-[10px] text-[#8ccfc5] disabled:opacity-50"><Pencil size={12}/>Düzenle</button><button disabled={submitting} aria-label={`${store.name} mağazasını ${store.status === "active" ? "duraklat" : "yeniden aç"}`} onClick={() => void run(() => onUpdate(store.id, { status: store.status === "active" ? "paused" : "active" }), store.status === "active" ? "Mağaza duraklatıldı" : "Mağaza yeniden açıldı")} className="flex items-center gap-1.5 text-[10px] text-[#f4b860] disabled:opacity-50"><Power size={12}/>{store.status === "active" ? "Duraklat" : "Yeniden aç"}</button><button disabled={submitting} onClick={() => { setDeletingStore(store); setConfirmation(""); }} aria-label={`${store.name} mağazasını sil`} className="flex items-center gap-1.5 text-[10px] text-[#ff887d] disabled:opacity-50"><Trash2 size={12}/>Sil</button></div>
             </article>;
           })}</div>
           {!members.length && <div className="rounded-xl border border-dashed border-[#303840] p-6 text-center text-[10px] text-[#77818b]">{group.id ? "Bu klasör boş. Mağaza kartındaki klasör seçimini kullanarak buraya taşıyabilirsiniz." : "Klasörsüz mağaza yok."}</div>}
