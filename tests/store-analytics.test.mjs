@@ -50,6 +50,9 @@ test("folder scopes include exactly their own stores; deleted-folder stores are 
   const group = report(scopedReportStores(stores, folders, "folder:f1", "all"))[0];
   assert.equal(group.income, 150); assert.equal(group.expense, 110); assert.equal(group.profit, 40);
   assert.deepEqual(scopedReportStores(stores, folders, "folder:missing", "all"), []);
+  assert.deepEqual(scopedReportStores(stores, folders, "store:b", "all").map((item) => item.id), ["b"]);
+  assert.deepEqual(scopedReportStores(stores, folders, "store:b", "active"), []);
+  assert.deepEqual(scopedReportStores(stores, folders, "store:missing", "all"), []);
 });
 
 test("store exclusion and paused/active filtering change all totals consistently", () => {

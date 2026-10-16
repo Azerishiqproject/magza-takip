@@ -31,7 +31,7 @@ Shopify mağazaları için çoklu mağaza, gelir/gider, kategori ve kârlılık 
 - Gelir kaydı oluşmadan günlük sipariş sayısını gösteren “Satış adedi” grafiği; sipariş durumu ve iptal filtreleri
 - Yalnızca gelir, gider veya net sonuç gösteren zaman, mağaza, klasör ve kategori grafikleri; ayrıntılı toplam tabloları
 - Aynı ad ve türdeki mağaza kategorilerini birleştirme; farklı para birimlerini ayrı raporlama
-- Mağaza kartından tek tıkla duraklatma ve yeniden açma
+- Ayrı Raporlar / Mağazalarım görünümleri; mağaza arama ve tek Yönet ekranından düzenleme, duraklatma, klasör değiştirme ve silme
 - Responsive masaüstü/mobil arayüz
 - Firebase Firestore gerçek zamanlı veri katmanı
 - Firebase erişilemezse otomatik demo veri modu
@@ -83,10 +83,12 @@ Shopify siparişlerini otomatik almak için sonraki aşamada sunucu taraflı Sho
 
 ## Mağazalar raporu
 
-**Mağazalar → Mağazaların toplam performansı** bölümünde tüm mağazaları, tek bir klasörü veya klasörsüz mağazaları seçebilirsiniz. Mağaza seçim kutuları yalnızca rapora dahil edilme durumunu değiştirir. Mağazanın durumunu duraklatılmış/aktif olarak kaydetmek için yönetim kartındaki düğmeyi kullanın; raporda yalnızca aktif veya yalnızca duraklatılmış mağazaları da filtreleyebilirsiniz.
+**Mağazalar → Raporlar** günlük satış adediyle açılır. Üstteki üç seçimden mağaza/klasör, dönem ve gösterilecek veriyi belirleyebilirsiniz. **Göster** menüsündeki Finans özeti, Gelir, Gider ve Kâr / zarar seçenekleri tutar grafiğini açar. Grafik yanındaki seçimle zaman, mağaza, klasör veya finans kategorisi karşılaştırmasına geçilir.
 
-Grafikte **Tümü**, **Satış / gelir**, **Gider** veya **Net kâr / zarar** metriklerinden birini seçin. **Zaman**, **Mağazalar**, **Klasörler** ve **Kategoriler** görünümleri aynı filtrelenmiş finans kayıtlarını kullanır. Kategori seçildiğinde net sonuç, yalnızca seçili kategorideki gelir eksi giderdir. Aynı ad ve türdeki kategoriler mağazalar arasında birleştirilir; gelir ve gider kategorileri ayrı tutulur. Silinmiş/kategorisiz işlem kayıtları “Kategorisiz” altında gösterilir.
+**Filtreler** düğmesi mağaza durumu, sipariş durumu/finans kategorisi ve çoklu mağaza seçimini açar. Ek filtreler kapalıyken de etkin seçimler görünür; **Sıfırla** ile temizlenebilir. Ayrıntılı toplamlar **Ayrıntılı tablo** bölümündedir. Farklı para birimleri finans raporunda ayrı hesaplanır; para birimi menüsüyle aralarında geçiş yapılır.
 
-Rapor teslim edilen siparişler için oluşturulan finans kayıtlarını ve manuel gelir/giderleri kullanır; siparişler ayrıca toplanarak çift sayılmaz. Farklı para birimleri kur dönüşümü yapılmadan ayrı hesaplanır; para birimi kartı ilgili grafiği ve tabloyu açar. Uzun tarih aralıkları otomatik olarak aylık/yıllık gruplara ayrılır. Mağaza ve kategori toplamları, seçili para biriminin rapor toplamıyla aynı sonucu verir.
+**Satış adedi** gelir kaydı oluşmasını beklemeden siparişleri oluşturuldukları yerel takvim gününe göre sayar. Paket siparişler tek satış sayılır. Varsayılan olarak iptaller hariçtir; filtrelerden iptaller dahil tümü veya belirli bir sipariş durumu seçilebilir. Farklı para birimlerinde satış yapan mağazaların adetleri birlikte sayılır. Bir yıla kadar günlük, daha uzun aralıklarda aylık/yıllık adetler gösterilir.
 
-**Satış adedi** metriği gelir tutarından bağımsızdır: siparişleri oluşturuldukları yerel takvim gününe göre sayar; henüz teslim edilmeyen siparişler de dahildir. Çok ürünlü paket sipariş tek satış sayılır. Varsayılan olarak iptaller hariçtir; sipariş durumu filtresinden iptaller dahil tümü, devam eden, teslim edilen veya iptal edilen siparişler seçilebilir. Bu görünümde finans kategorisi uygulanmaz ve farklı para birimlerindeki mağazaların adetleri birlikte toplanır. Günlük, mağaza ve klasör grafikleri aynı mağaza/tarih filtrelerini kullanır; bir yıla kadar günlük, daha uzun aralıklarda aylık/yıllık adetler gösterilir.
+Finans raporu teslim edilen siparişlerin finans kayıtlarını ve manuel gelir/giderleri kullanır; siparişler ayrıca eklenerek çift sayılmaz. Aynı ad ve türdeki kategoriler birleştirilir. Silinmiş/kategorisiz kayıtlar “Kategorisiz” altında görünür. Kategori seçilirse özet ve grafik yalnızca o kategoriyi kapsar. Uzun tarih aralıkları aylık/yıllık gruplara ayrılır.
+
+**Mağazalarım** bölümünde mağaza arayabilir, mağaza veya klasör oluşturabilirsiniz. Mağazanın **Yönet** düğmesi ad, domain, klasör ve aktif/duraklatılmış durumunu düzenler. Silme işlemi bu ekrandan ayrı onayla başlatılır. Raporlar ile Mağazalarım arasında geçiş yapmak rapor seçimlerini korur.

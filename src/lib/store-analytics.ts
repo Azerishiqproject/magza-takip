@@ -4,7 +4,7 @@ import type { Category, Order, Period, Store, StoreFolder, Transaction, Transact
 export type ReportPeriod = Period | "all";
 export type ReportMetric = "all" | "income" | "expense" | "profit" | "sales";
 export type ReportView = "time" | "stores" | "folders" | "categories";
-export type StoreScope = "all" | "ungrouped" | `folder:${string}`;
+export type StoreScope = "all" | "ungrouped" | `folder:${string}` | `store:${string}`;
 export type StatusScope = "all" | Store["status"];
 export type ReportRange = { start: string; end: string; error: string | null };
 export type ReportTotals = { income: number; expense: number; profit: number; count: number };
@@ -52,7 +52,7 @@ export function getReportRange(period: ReportPeriod, customStart: string, custom
 export function scopedReportStores(stores: Store[], folders: StoreFolder[], scope: StoreScope, status: StatusScope) {
   const folderIds = new Set(folders.map((folder) => folder.id));
   return stores.filter((store) => (status === "all" || store.status === status) && (
-    scope === "all" || (scope === "ungrouped" ? !store.folderId || !folderIds.has(store.folderId) : store.folderId === scope.slice("folder:".length))
+    scope === "all" || (scope.startsWith("store:") ? store.id === scope.slice("store:".length) : scope === "ungrouped" ? !store.folderId || !folderIds.has(store.folderId) : store.folderId === scope.slice("folder:".length))
   ));
 }
 
