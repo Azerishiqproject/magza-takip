@@ -83,9 +83,9 @@ Shopify siparişlerini otomatik almak için sonraki aşamada sunucu taraflı Sho
 
 ## Mağazalar raporu
 
-**Mağazalar → Raporlar** günlük satış adediyle açılır. Üstteki üç seçimden mağaza/klasör, dönem ve gösterilecek veriyi belirleyebilirsiniz. **Göster** menüsündeki Finans özeti, Gelir, Gider ve Kâr / zarar seçenekleri tutar grafiğini açar. Grafik yanındaki seçimle zaman, mağaza, klasör veya finans kategorisi karşılaştırmasına geçilir.
+**Mağazalar → Raporlar** günlük satış adediyle açılır. Üstteki **Mağazalar / klasörler** alanından birden fazla mağazayı aynı anda işaretleyebilir, bir klasörün tamamını seçebilir veya arama yapabilirsiniz. Seçili mağazaların grafikleri ve toplamları birlikte hesaplanır. Dönem ve gösterilecek veri yanındaki menülerden belirlenir. **Göster** menüsündeki Finans özeti, Gelir, Gider ve Kâr / zarar seçenekleri tutar grafiğini açar. Grafik yanındaki seçimle zaman, mağaza, klasör veya finans kategorisi karşılaştırmasına geçilir.
 
-**Filtreler** düğmesi mağaza durumu, sipariş durumu/finans kategorisi ve çoklu mağaza seçimini açar. Ek filtreler kapalıyken de etkin seçimler görünür; **Sıfırla** ile temizlenebilir. Ayrıntılı toplamlar **Ayrıntılı tablo** bölümündedir. Farklı para birimleri finans raporunda ayrı hesaplanır; para birimi menüsüyle aralarında geçiş yapılır.
+**Filtreler** düğmesi mağaza durumu ve sipariş durumu/finans kategorisi seçeneklerini açar. Ek filtreler kapalıyken de etkin seçimler görünür; **Sıfırla** ile temizlenebilir. Ek filtreleri sıfırlamak ana mağaza seçimini değiştirmez. Ayrıntılı toplamlar **Ayrıntılı tablo** bölümündedir. Farklı para birimleri finans raporunda ayrı hesaplanır; para birimi menüsüyle aralarında geçiş yapılır.
 
 **Satış adedi** gelir kaydı oluşmasını beklemeden siparişleri oluşturuldukları yerel takvim gününe göre sayar. Paket siparişler tek satış sayılır. Varsayılan olarak iptaller hariçtir; filtrelerden iptaller dahil tümü veya belirli bir sipariş durumu seçilebilir. Farklı para birimlerinde satış yapan mağazaların adetleri birlikte sayılır. Bir yıla kadar günlük, daha uzun aralıklarda aylık/yıllık adetler gösterilir.
 

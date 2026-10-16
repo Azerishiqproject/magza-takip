@@ -4,8 +4,9 @@ import { useId, useMemo, useState } from "react";
 import { format, subDays } from "date-fns";
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { SlidersHorizontal, Store as StoreIcon } from "lucide-react";
-import { buildSalesReport, buildStoreReports, getReportRange, matchesSalesStatus, orderCreatedDate, reportCategoryOptions, reportMoney, scopedReportStores, type CurrencyReport, type ReportMetric, type ReportPeriod, type ReportView, type SalesStatus, type StatusScope, type StoreScope } from "@/lib/store-analytics";
+import { buildSalesReport, buildStoreReports, getReportRange, matchesSalesStatus, orderCreatedDate, reportCategoryOptions, reportMoney, scopedReportStores, type CurrencyReport, type ReportMetric, type ReportPeriod, type ReportView, type SalesStatus, type StatusScope } from "@/lib/store-analytics";
 import type { Category, Order, Store, StoreFolder, Transaction } from "@/lib/types";
+import { ReportStoreSelect } from "./report-store-select";
 import { ReportDetails } from "./report-details";
 import { StoreSalesReport } from "./store-sales-report";
 import { Field } from "./modal";
@@ -15,9 +16,8 @@ const VIEWS: { id: ReportView; label: string }[] = [{ id: "time", label: "Zaman"
 const SERIES = [{ key: "income", label: "Gelir", color: "#2dd4bf" }, { key: "expense", label: "Gider", color: "#ff887d" }, { key: "profit", label: "Kâr / zarar", color: "#57b8ff" }] as const;
 
 export function StoresAnalytics({ stores, folders, categories, transactions, orders, visible = true }: { visible?: boolean; orders: Order[]; stores: Store[]; folders: StoreFolder[]; categories: Category[]; transactions: Transaction[] }) {
-  const [scope, setScope] = useState<StoreScope>("all");
   const [status, setStatus] = useState<StatusScope>("all");
-  const [excluded, setExcluded] = useState<string[]>([]);
+  const [included, setIncluded] = useState<string[] | null>(null);
   const [period, setPeriod] = useState<ReportPeriod>("month");
   const [customStart, setCustomStart] = useState(() => format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [customEnd, setCustomEnd] = useState(() => format(new Date(), "yyyy-MM-dd"));
@@ -29,8 +29,8 @@ export function StoresAnalytics({ stores, folders, categories, transactions, ord
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filtersId = useId();
   const isSales = metric === "sales";
-  const scoped = useMemo(() => scopedReportStores(stores, folders, scope, status), [stores, folders, scope, status]);
-  const selected = useMemo(() => scoped.filter((store) => !excluded.includes(store.id)), [scoped, excluded]);
+  const scoped = useMemo(() => scopedReportStores(stores, folders, "all", status), [stores, folders, status]);
+  const selected = useMemo(() => scoped.filter((store) => included === null || included.includes(store.id)), [scoped, included]);
   const categoryOptions = useMemo(() => reportCategoryOptions(stores, categories, transactions), [stores, categories, transactions]);
   const selectedIds = useMemo(() => new Set(selected.map((store) => store.id)), [selected]);
   const range = useMemo(() => getReportRange(period, customStart, customEnd, isSales ? orders.filter((item) => selectedIds.has(item.storeId) && matchesSalesStatus(item, salesStatus)).map((item) => ({ date: orderCreatedDate(item) ?? "" })) : transactions.filter((item) => selectedIds.has(item.storeId))), [period, customStart, customEnd, transactions, selectedIds, isSales, orders, salesStatus]);
@@ -38,18 +38,16 @@ export function StoresAnalytics({ stores, folders, categories, transactions, ord
   const salesReport = useMemo(() => isSales ? buildSalesReport(selected, folders, orders, range, salesStatus) : null, [isSales, selected, folders, orders, range, salesStatus]);
   const report = reports.find((item) => item.currency === currency) ?? reports[0];
   const selectedCategory = categoryOptions.find((item) => item.key === category);
-  const toggleStore = (id: string) => setExcluded((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  const includedIds = stores.filter((store) => included === null || included.includes(store.id)).map((store) => store.id);
 
   // Keep selections mounted while avoiding chart measurements in the hidden management view.
   if (!visible) return null;
 
-  const excludedCount = scoped.filter((store) => excluded.includes(store.id)).length;
   const activeFilters = [
     status !== "all" ? status === "active" ? "Aktif mağazalar" : "Duraklatılmış mağazalar" : null,
     isSales ? salesStatus !== "valid" ? ({ all: "İptaller dahil", active: "Devam eden siparişler", completed: "Teslim edilen siparişler", cancelled: "İptal edilen siparişler" } as const)[salesStatus] : null : category !== "all" ? selectedCategory?.name ?? "Silinmiş kategori" : null,
-    excludedCount ? `${excludedCount} mağaza hariç` : null,
   ].filter(Boolean);
-  const resetFilters = () => { setStatus("all"); setExcluded([]); setCategory("all"); setSalesStatus("valid"); };
+  const resetFilters = () => { setStatus("all"); setCategory("all"); setSalesStatus("valid"); };
 
   return <section aria-label="Mağazalar finans raporu" className="panel rounded-2xl p-4 sm:p-6">
     <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
@@ -57,7 +55,7 @@ export function StoresAnalytics({ stores, folders, categories, transactions, ord
       <button type="button" aria-expanded={filtersOpen} aria-controls={filtersId} onClick={() => setFiltersOpen(!filtersOpen)} className={`flex min-h-10 items-center gap-2 rounded-xl border px-3 text-xs font-medium transition ${filtersOpen || activeFilters.length ? "border-[#3b7469] bg-[#152721] text-[#79dfd2]" : "border-[#303a44] text-[#a9b4be] hover:bg-white/5"}`}><SlidersHorizontal size={15}/>Filtreler{activeFilters.length > 0 && <span className="grid h-5 min-w-5 place-items-center rounded-md bg-[#2c5148] px-1 text-[11px]">{activeFilters.length}</span>}</button>
     </div>
     <div className="grid gap-3 sm:grid-cols-3">
-      <Field label="Mağaza / klasör"><select aria-label="Rapor kapsamı" className="input" value={scope} onChange={(event) => setScope(event.target.value as StoreScope)}><option value="all">Tüm mağazalar</option><optgroup label="Klasörler">{folders.map((folder) => <option key={folder.id} value={`folder:${folder.id}`}>{folder.name}</option>)}</optgroup><optgroup label="Mağazalar">{stores.map((store) => <option key={store.id} value={`store:${store.id}`}>{store.name}</option>)}</optgroup>{scope.startsWith("folder:") && !folders.some((folder) => `folder:${folder.id}` === scope) && <option value={scope}>Silinmiş klasör</option>}<option value="ungrouped">Klasörsüz mağazalar</option>{scope.startsWith("store:") && !stores.some((store) => `store:${store.id}` === scope) && <option value={scope}>Silinmiş mağaza</option>}</select></Field>
+      <ReportStoreSelect stores={stores} folders={folders} selectedIds={includedIds} onChange={(ids) => setIncluded(ids.length === stores.length ? null : ids)}/>
       <Field label="Dönem"><select aria-label="Rapor dönemi" className="input" value={period} onChange={(event) => setPeriod(event.target.value as ReportPeriod)}><option value="day">Bugün</option><option value="week">Bu hafta</option><option value="month">Bu ay</option><option value="year">Bu yıl</option><option value="all">Tüm zamanlar</option><option value="custom">Özel tarih aralığı</option></select></Field>
       <Field label="Göster"><select aria-label="Grafik metriği" className="input" value={metric} onChange={(event) => { const next = event.target.value as ReportMetric; setMetric(next); if (next === "sales" && view === "categories") setView("time"); }}>{METRICS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></Field>
     </div>
@@ -68,12 +66,9 @@ export function StoresAnalytics({ stores, folders, categories, transactions, ord
         <Field label="Mağaza durumu"><select aria-label="Rapor mağaza durumu" className="input" value={status} onChange={(event) => setStatus(event.target.value as StatusScope)}><option value="all">Tüm mağaza durumları</option><option value="active">Yalnızca aktif</option><option value="paused">Yalnızca duraklatılmış</option></select></Field>
         {isSales ? <Field label="Sipariş durumu"><select aria-label="Satış adedi sipariş durumu" className="input" value={salesStatus} onChange={(event) => setSalesStatus(event.target.value as SalesStatus)}><option value="valid">İptaller hariç</option><option value="all">İptaller dahil tümü</option><option value="active">Devam eden siparişler</option><option value="completed">Teslim edilen siparişler</option><option value="cancelled">İptal edilen siparişler</option></select></Field> : <Field label="Kategori"><select aria-label="Rapor kategorisi" className="input" value={category} onChange={(event) => setCategory(event.target.value)}><option value="all">Tüm kategoriler</option>{(["income", "expense"] as const).map((type) => <optgroup key={type} label={type === "income" ? "Gelir kategorileri" : "Gider kategorileri"}>{categoryOptions.filter((item) => item.type === type).map((item) => <option key={item.key} value={item.key}>{item.name} · {type === "income" ? "Gelir" : "Gider"}</option>)}</optgroup>)}{category !== "all" && !selectedCategory && <option value={category}>Seçili kategori artık yok</option>}</select></Field>}
       </div>
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-medium text-[#b5c0c9]">Mağaza seçimi <span className="font-normal text-[#8d99a4]">({selected.length}/{scoped.length})</span></p><div className="flex gap-2"><button type="button" disabled={!scoped.length} onClick={() => setExcluded((current) => current.filter((id) => !scoped.some((store) => store.id === id)))} className="min-h-9 rounded-lg px-2 text-xs text-[#79dfd2] hover:bg-white/5 disabled:opacity-40">Tümünü seç</button><button type="button" disabled={!scoped.length} onClick={() => setExcluded((current) => [...new Set([...current, ...scoped.map((store) => store.id)])])} className="min-h-9 rounded-lg px-2 text-xs text-[#9ca8b4] hover:bg-white/5 disabled:opacity-40">Tümünü kaldır</button></div></div>
-      <div className="mt-2 grid max-h-56 gap-2 overflow-y-auto sm:grid-cols-2 xl:grid-cols-3">{scoped.map((store) => <label key={store.id} className={`flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-xs transition ${excluded.includes(store.id) ? "border-[#28323b] text-[#8c99a4]" : "border-[#31564e] bg-[#14231f] text-[#d2e0da]"}`}><input type="checkbox" aria-label={`${store.name} rapora dahil`} checked={!excluded.includes(store.id)} onChange={() => toggleStore(store.id)} className="h-4 w-4 shrink-0 accent-[#2dd4bf]"/><span className="min-w-0 flex-1 break-words">{store.name}</span><span className="text-[11px] text-[#93a09e]">{store.status === "paused" ? "Duraklatıldı" : store.currency}</span></label>)}</div>
-      {!scoped.length && <p className="py-3 text-xs text-[#929da8]">Bu filtrelerde mağaza bulunmuyor.</p>}
     </div>
     {activeFilters.length > 0 && <div className="mt-3 flex flex-wrap items-center gap-2" aria-label="Etkin rapor filtreleri">{activeFilters.map((label) => <span key={label} className="rounded-lg bg-[#1b2927] px-2.5 py-1.5 text-[11px] text-[#a5c9bd]">{label}</span>)}<button type="button" onClick={resetFilters} className="min-h-9 px-2 text-xs text-[#a2aeb9] underline underline-offset-4">Sıfırla</button></div>}
-    {range.error ? <p role="alert" className="mt-4 rounded-xl border border-[#63332f] bg-[#271817] p-3 text-xs text-[#ff887d]">{range.error}</p> : !selected.length ? <div className="py-14 text-center"><StoreIcon size={28} className="mx-auto text-[#71818d]"/><p className="mt-3 text-sm text-[#c0cbd4]">Rapor için en az bir mağaza seçin.</p><button type="button" onClick={() => { resetFilters(); setScope("all"); }} className="mt-3 rounded-lg border border-[#31564e] px-4 py-2.5 text-xs text-[#79dfd2]">Mağazaları yeniden seç</button></div> : <>
+    {range.error ? <p role="alert" className="mt-4 rounded-xl border border-[#63332f] bg-[#271817] p-3 text-xs text-[#ff887d]">{range.error}</p> : !selected.length ? <div className="py-14 text-center"><StoreIcon size={28} className="mx-auto text-[#71818d]"/><p className="mt-3 text-sm text-[#c0cbd4]">Rapor için en az bir mağaza seçin.</p><button type="button" onClick={() => { resetFilters(); setIncluded(null); }} className="mt-3 rounded-lg border border-[#31564e] px-4 py-2.5 text-xs text-[#79dfd2]">Mağazaları yeniden seç</button></div> : <>
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[#27313a] pt-4">
         <p className="text-xs text-[#929da8]">{isSales ? selected.length : report?.storeCount ?? 0} mağaza · {range.start.split("-").reverse().join(".")} — {range.end.split("-").reverse().join(".")}</p>
         <div className="flex flex-wrap items-center gap-2">
