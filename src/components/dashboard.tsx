@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { eachDayOfInterval, endOfDay, format, startOfDay, startOfMonth, startOfWeek, startOfYear, subDays } from "date-fns";
-import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ArrowDownRight, ArrowUpRight, CalendarDays, Download, Layers3, Pencil, Plus, Search, TrendingUp, WalletCards, X } from "lucide-react";
 import { toast } from "sonner";
 import { useFinanceData } from "@/hooks/use-finance-data";
@@ -15,12 +15,12 @@ import { OrdersView } from "./orders-view";
 import { StoresView } from "./stores-view";
 import { StorePicker } from "./store-picker";
 import { ProfitabilityPanel } from "./profitability-panel";
+import { OverviewInsightCard } from "./overview-insight-card";
 
 const PERIODS: { id: Period; label: string }[] = [
   { id: "day", label: "Bugün" }, { id: "week", label: "Hafta" }, { id: "month", label: "Ay" }, { id: "year", label: "Yıl" }, { id: "custom", label: "Özel" },
 ];
 
-const expenseColors = ["#ff7468", "#f4b860", "#57b8ff", "#87929d", "#2dd4bf"];
 const monthLabels = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
 
 type ChartGranularity = "day" | "month";
@@ -39,6 +39,7 @@ export function Dashboard() {
   const { stores, folders, products, addProduct, updateProduct, adjustStock, categories, transactions, orders, isDemo, addStore, updateStore, deleteStore, saveFolder, deleteFolder, updateOrder, deleteOrder, addCategory, updateCategory, addTransaction, updateTransaction, addOrder, updateOrderStage, editOrderDetails, completeOrder, cancelOrder } = useFinanceData();
   const [view, setView] = useState<View>("overview");
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [roasOpen, setRoasOpen] = useState(false);
   const [activeStoreId, setActiveStoreId] = useState(stores[0]?.id ?? "");
   const [period, setPeriod] = useState<Period>("month");
   const [customStart, setCustomStart] = useState(subDays(new Date(), 30).toISOString().slice(0, 10));
@@ -86,12 +87,6 @@ export function Dashboard() {
     return Array.from(groups.values()).sort((a, b) => a.date.localeCompare(b.date));
   }, [storeTransactions, period, customStart, customEnd]);
 
-  const expenseData = useMemo(() => storeCategories.filter((category) => category.type === "expense").map((category, index) => ({
-    name: category.name,
-    value: storeTransactions.filter((item) => item.type === "expense" && item.categoryId === category.id).reduce((sum, item) => sum + item.amount, 0),
-    color: category.color || expenseColors[index % expenseColors.length],
-  })).filter((item) => item.value > 0).sort((a, b) => b.value - a.value), [storeCategories, storeTransactions]);
-
   const openTransaction = (type: TransactionType) => { setEditingTransaction(null); setTransactionType(type); setModal("transaction"); };
   const editTransaction = (transaction: Transaction) => { setEditingTransaction(transaction); setTransactionType(transaction.type); setModal("transaction"); };
 
@@ -109,7 +104,7 @@ export function Dashboard() {
         </header>
 
         <div className="mx-auto max-w-[1500px] p-4 md:p-6">
-          {activeStore && view === "overview" && <Overview profitabilityPanel={<ProfitabilityPanel store={activeStore} stores={stores} categories={categories} transactions={storeTransactions} periodTransactions={periodTransactions} onSelect={setActiveStoreId} onSave={(profitSettings) => updateStore(activeStore.id, { profitSettings })}/>} activeStore={activeStore} period={period} setPeriod={setPeriod} customStart={customStart} customEnd={customEnd} setCustomStart={setCustomStart} setCustomEnd={setCustomEnd} totalIncome={totalIncome} totalExpense={totalExpense} profit={profit} margin={margin} chartData={chartData} expenseData={expenseData} transactions={storeTransactions} categories={storeCategories} openTransaction={openTransaction} onEditTransaction={editTransaction} onChartSelect={(date, type, granularity) => setChartDetail({ date, type, granularity })} />}
+          {activeStore && view === "overview" && <Overview insightCard={<OverviewInsightCard store={activeStore} categories={categories} transactions={storeTransactions} onOpenRoas={() => setRoasOpen(true)}/>} profitabilityPanel={<ProfitabilityPanel open={roasOpen} onOpenChange={setRoasOpen} store={activeStore} stores={stores} categories={categories} transactions={storeTransactions} periodTransactions={periodTransactions} onSelect={setActiveStoreId} onSave={(profitSettings) => updateStore(activeStore.id, { profitSettings })}/>} activeStore={activeStore} period={period} setPeriod={setPeriod} customStart={customStart} customEnd={customEnd} setCustomStart={setCustomStart} setCustomEnd={setCustomEnd} totalIncome={totalIncome} totalExpense={totalExpense} profit={profit} margin={margin} chartData={chartData} transactions={storeTransactions} categories={storeCategories} openTransaction={openTransaction} onEditTransaction={editTransaction} onChartSelect={(date, type, granularity) => setChartDetail({ date, type, granularity })} />}
           {activeStore && view === "products" && <ProductsView key={activeStore.id} store={activeStore} products={products.filter((item) => item.storeId === activeStore.id)} onAdd={addProduct} onUpdate={updateProduct} onStock={adjustStock}/>}
           {activeStore && view === "orders" && <OrdersView products={products.filter((item) => item.storeId === activeStore.id)} onProducts={() => setView("products")} key={activeStore.id} store={activeStore} orders={orders.filter((item) => item.storeId === activeStore.id)} onAdd={addOrder} onStage={updateOrderStage} onEdit={editOrderDetails} onUpdate={updateOrder} onDelete={deleteOrder} onComplete={completeOrder} onCancel={cancelOrder} />}
           {activeStore && view === "transactions" && <TransactionsView transactions={transactions.filter((item) => item.storeId === activeStore.id)} categories={storeCategories} store={activeStore} onAdd={() => openTransaction("income")} onEdit={editTransaction} />}
@@ -139,7 +134,7 @@ export function Dashboard() {
   );
 }
 
-function Overview(props: { profitabilityPanel: ReactNode; activeStore: Store; period: Period; setPeriod: (p: Period) => void; customStart: string; customEnd: string; setCustomStart: (v: string) => void; setCustomEnd: (v: string) => void; totalIncome: number; totalExpense: number; profit: number; margin: number; chartData: ChartPoint[]; expenseData: { name: string; value: number; color: string }[]; transactions: import("@/lib/types").Transaction[]; categories: Category[]; openTransaction: (type: TransactionType) => void; onEditTransaction: (transaction: Transaction) => void; onChartSelect: (date: string, type: TransactionType, granularity: ChartGranularity) => void }) {
+function Overview(props: { insightCard: ReactNode; profitabilityPanel: ReactNode; activeStore: Store; period: Period; setPeriod: (p: Period) => void; customStart: string; customEnd: string; setCustomStart: (v: string) => void; setCustomEnd: (v: string) => void; totalIncome: number; totalExpense: number; profit: number; margin: number; chartData: ChartPoint[]; transactions: import("@/lib/types").Transaction[]; categories: Category[]; openTransaction: (type: TransactionType) => void; onEditTransaction: (transaction: Transaction) => void; onChartSelect: (date: string, type: TransactionType, granularity: ChartGranularity) => void }) {
   const { activeStore: store } = props;
   return <>
     <div className="mb-5 flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
@@ -155,7 +150,7 @@ function Overview(props: { profitabilityPanel: ReactNode; activeStore: Store; pe
     </div>
     <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,.7fr)]">
       <section className="panel min-h-[360px] rounded-2xl p-4 md:p-5"><SectionTitle title="Gelir ve gider akışı" subtitle="Günün üzerine gelin, gelir veya gider noktasına tıklayın" action={<button className="flex items-center gap-1.5 text-[9px] text-[#84909a]"><Download size={12} />Dışa aktar</button>} /><div className="mt-5 h-[278px]"><ResponsiveContainer width="100%" height="100%"><AreaChart data={props.chartData} margin={{ left: -24, right: 4, top: 10 }}><defs><linearGradient id="income" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2dd4bf" stopOpacity={.28}/><stop offset="95%" stopColor="#2dd4bf" stopOpacity={0}/></linearGradient><linearGradient id="expense" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#ff7468" stopOpacity={.12}/><stop offset="95%" stopColor="#ff7468" stopOpacity={0}/></linearGradient></defs><CartesianGrid stroke="#252d35" strokeDasharray="3 5" vertical={false}/><XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: "#68737d", fontSize: 9 }} minTickGap={25}/><YAxis axisLine={false} tickLine={false} tick={{ fill: "#68737d", fontSize: 9 }} tickFormatter={(v) => `${Math.round(v/1000)}K`}/><Tooltip content={({ active, payload }) => { const point = payload?.[0]?.payload as ChartPoint | undefined; if (!active || !point) return null; const pointItems = props.transactions.filter(item => point.granularity === "month" ? item.date.startsWith(point.date) : item.date === point.date); return <div className="min-w-[190px] rounded-xl border border-[#2c3740] bg-[#111820] p-3 shadow-2xl"><p className="text-[9px] font-semibold text-white">{point.label} özeti</p><div className="mt-2.5 space-y-2"><div className="flex items-center justify-between gap-5"><span className="text-[9px] text-[#6ddccd]">Gelir · {pointItems.filter(item => item.type === "income").length} kayıt</span><strong className="text-[10px] text-[#6ddccd]">{money(point.gelir, store.currency)}</strong></div><div className="flex items-center justify-between gap-5"><span className="text-[9px] text-[#ff887d]">Gider · {pointItems.filter(item => item.type === "expense").length} kayıt</span><strong className="text-[10px] text-[#ff887d]">{money(point.gider, store.currency)}</strong></div></div><p className="mt-2.5 border-t border-[#29323a] pt-2 text-[8px] text-[#68737d]">Detay için renkli noktaya tıklayın</p></div>; }}/><Area type="monotone" dataKey="gelir" stroke="#2dd4bf" strokeWidth={2} fill="url(#income)" activeDot={(dotProps) => <ClickableDot {...dotProps} color="#2dd4bf" onSelect={(date, granularity) => props.onChartSelect(date, "income", granularity)} />} /><Area type="monotone" dataKey="gider" stroke="#ff7468" strokeWidth={1.5} fill="url(#expense)" activeDot={(dotProps) => <ClickableDot {...dotProps} color="#ff7468" onSelect={(date, granularity) => props.onChartSelect(date, "expense", granularity)} />} /></AreaChart></ResponsiveContainer></div></section>
-      <section className="panel min-h-[360px] rounded-2xl p-4 md:p-5"><SectionTitle title="Gider dağılımı" subtitle="Kategori bazında harcamalar" /><div className="relative mx-auto mt-3 h-[190px] max-w-[260px]"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={props.expenseData} innerRadius={60} outerRadius={78} paddingAngle={3} dataKey="value" stroke="none">{props.expenseData.map((item) => <Cell key={item.name} fill={item.color}/>)}</Pie></PieChart></ResponsiveContainer><div className="pointer-events-none absolute inset-0 grid place-items-center text-center"><div><p className="text-[9px] text-[#77818b]">Toplam gider</p><p className="mt-1 text-[14px] font-bold">{money(props.totalExpense, store.currency, true)}</p></div></div></div><div className="space-y-2.5">{props.expenseData.slice(0, 4).map((item) => <div key={item.name} className="flex items-center text-[9px]"><span className="mr-2 h-2 w-2 rounded-full" style={{ background: item.color }}/><span className="flex-1 text-[#9ba5ae]">{item.name}</span><span className="font-semibold">{money(item.value, store.currency)}</span><span className="ml-2 w-9 text-right text-[#66717c]">%{props.totalExpense ? Math.round(item.value / props.totalExpense * 100) : 0}</span></div>)}</div></section>
+      {props.insightCard}
     </div>
     <section className="panel mt-3 rounded-2xl p-4 md:p-5"><SectionTitle title="Son hareketler" subtitle="Seçili dönemin en güncel kayıtları" action={<button className="text-[9px] font-semibold text-[#55d5c6]">Tümünü gör</button>} /><TransactionTable transactions={props.transactions.slice().sort((a,b) => b.date.localeCompare(a.date)).slice(0, 7)} categories={props.categories} store={store} onEdit={props.onEditTransaction} /></section>
   </>;

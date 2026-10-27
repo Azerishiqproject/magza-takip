@@ -105,3 +105,5 @@ Ana sayfadaki **ROAS ve ürün kârı** düğmesi ayrı bir pencere açar. Pence
 - Ayar önizlemesi = ortalama satış fiyatı / (ortalama satış fiyatı − kargo dahil ürün maliyeti). Ayrı kargo/paket maliyeti sorulmaz.
 
 Pencerede ROAS, başa baş eşiği, ürün kârı ve görsel performans göstergesi bulunur. Mağaza karşılaştırması da pencerenin içindedir. Ana sayfadaki dönem filtresi kullanılır; mağazalar kendi para birimleriyle gösterilir. Ortalama fiyat ve maliyet değiştirildiğinde geçmiş dönem tahminleri de güncellenir. Mevcut gelir-gider ve sipariş kayıtları değişmez. Genel gelir-gider raporları tüm kayıtları kullanmaya devam eder.
+
+Ana sayfadaki gider dağılımı kartında **Gider dağılımı / ROAS** düğmeleri bulunur. Gider görünümü kategori tutarlarını, yüzdelerini ve pay çubuklarını gösterir; dört kategoriden fazlası “Tüm kategoriler” ile açılır. Kategorisi bulunamayan giderler de “Kategorisiz” altında toplamda korunur. ROAS görünümü aynı mağaza ve dönem için küçük bir ROAS, başa baş eşiği ve ürün kârı özeti gösterir; **Ayrıntılı ROAS** düğmesi mevcut büyük pencereyi açar. Küçük ve büyük görünüm aynı hesaplama fonksiyonunu kullanır.

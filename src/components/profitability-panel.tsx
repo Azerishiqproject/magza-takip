@@ -11,10 +11,9 @@ import { Field, Modal } from "./modal";
 const ratio = (value: number | null) => value === null ? "—" : `${value.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x`;
 type Data = { categories: Category[]; transactions: Transaction[] };
 type SettingsProps = { store: Store; categories: Category[]; onSave: (settings: ProfitSettings) => Promise<{ persisted: boolean }>; onDone: () => void };
-type Props = Data & Omit<SettingsProps, "onDone"> & { stores: Store[]; periodTransactions: Transaction[]; onSelect: (id: string) => void };
+type Props = Data & Omit<SettingsProps, "onDone"> & { stores: Store[]; periodTransactions: Transaction[]; onSelect: (id: string) => void; open: boolean; onOpenChange: (open: boolean) => void };
 
-export function ProfitabilityPanel({ store, stores, categories, transactions, periodTransactions, onSelect, onSave }: Props) {
-  const [open, setOpen] = useState(false);
+export function ProfitabilityPanel({ store, stores, categories, transactions, periodTransactions, onSelect, onSave, open, onOpenChange: setOpen }: Props) {
   const [editing, setEditing] = useState(false);
   const launcher = useRef<HTMLButtonElement>(null);
   const result = useMemo(() => calculateProfitability(store, categories, transactions), [store, categories, transactions]);
@@ -25,7 +24,7 @@ export function ProfitabilityPanel({ store, stores, categories, transactions, pe
     };
     document.addEventListener("keydown", escape);
     return () => document.removeEventListener("keydown", escape);
-  }, [open]);
+  }, [open, setOpen]);
   const close = () => { setOpen(false); setEditing(false); launcher.current?.focus(); };
   const amount = (value: number | null) => value === null ? "—" : reportMoney(value, store.currency);
   const setup = editing || !result.configured;
@@ -56,10 +55,17 @@ export function ProfitabilityPanel({ store, stores, categories, transactions, pe
   </>;
 }
 
-function RoasGauge({ result }: { result: Profitability }) {
+export function RoasGauge({ result, compact = false }: { result: Profitability; compact?: boolean }) {
   const maximum = Math.max(6, Math.ceil(Math.max(result.roas ?? 0, result.breakEven ?? 0) * 1.25));
   const threshold = result.breakEven === null ? null : result.breakEven / maximum * 100;
   const current = result.roas === null ? null : Math.max(1, Math.min(99, result.roas / maximum * 100));
+  if (compact) return <div role="img" aria-label={`ROAS göstergesi. Başa baş ${ratio(result.breakEven)}, mevcut ${ratio(result.roas)}.`} className="mt-4 rounded-xl border border-[#2b4035] bg-[#0b1510] p-3">
+    <div className="relative mx-1 mt-2 h-2.5 rounded-full bg-[#33413c]" style={threshold === null ? undefined : { background: `linear-gradient(to right, #bd8d4d 0%, #bd8d4d ${threshold}%, #3e9277 ${threshold}%, #3e9277 100%)` }}>
+      {threshold !== null && <span className="absolute -top-1.5 h-6 w-0.5 bg-[#efbd6f]" style={{ left: `${threshold}%` }}/>}
+      {current !== null && <span className={`absolute -top-1 h-5 w-5 -translate-x-1/2 rounded-full border-[3px] border-[#f0f5f2] ${threshold === null ? "bg-[#63736b]" : result.roas! >= result.breakEven! ? "bg-[#1c7459]" : "bg-[#a56c33]"}`} style={{ left: `${current}%` }}/>}
+    </div>
+    <div className="mt-3 flex justify-between gap-2 text-[10px] text-[#9eb4a6]"><span>0x</span><span className="text-[#dcb77d]">Eşik {ratio(result.breakEven)}</span><span>{maximum.toLocaleString("tr-TR")}x</span></div>
+  </div>;
   return <div className="mt-5 rounded-xl border border-[#293a31] bg-[#0b1410] p-4" role="img" aria-label={`ROAS göstergesi. Başa baş ${ratio(result.breakEven)}, mevcut ${ratio(result.roas)}.`}>
     <div className="mb-6 flex flex-wrap justify-between gap-2 text-xs text-[#a7b7af]"><span>ROAS performansı</span><span className={result.profit !== null && result.profit >= 0 ? "text-[#7cdbb4]" : "text-[#efc183]"}>{result.profit === null ? "Maliyet ve fiyat bekleniyor" : result.revenue === 0 ? "Henüz satış yok" : result.profit > 0 ? "Kâr bölgesinde" : result.profit === 0 ? "Başa baş" : "Zarar bölgesinde"}</span></div>
     <div className="relative mx-1 h-4 rounded-full bg-[#33413c]" style={threshold === null ? undefined : { background: `linear-gradient(to right, #bd8d4d 0%, #bd8d4d ${threshold}%, #3e9277 ${threshold}%, #3e9277 100%)` }}>
