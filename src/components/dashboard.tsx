@@ -14,7 +14,7 @@ import { ProductsView } from "./products-view";
 import { OrdersView } from "./orders-view";
 import { StoresView } from "./stores-view";
 import { StorePicker } from "./store-picker";
-import { ProfitabilityPanel, StoreProfitabilityTable } from "./profitability-panel";
+import { ProfitabilityPanel } from "./profitability-panel";
 
 const PERIODS: { id: Period; label: string }[] = [
   { id: "day", label: "Bugün" }, { id: "week", label: "Hafta" }, { id: "month", label: "Ay" }, { id: "year", label: "Yıl" }, { id: "custom", label: "Özel" },
@@ -109,7 +109,7 @@ export function Dashboard() {
         </header>
 
         <div className="mx-auto max-w-[1500px] p-4 md:p-6">
-          {activeStore && view === "overview" && <Overview profitabilityPanel={<><ProfitabilityPanel key={activeStore.id} store={activeStore} categories={categories} transactions={storeTransactions} onSave={(profitSettings) => updateStore(activeStore.id, { profitSettings })}/><StoreProfitabilityTable stores={stores} categories={categories} transactions={periodTransactions} onSelect={setActiveStoreId}/></>} activeStore={activeStore} period={period} setPeriod={setPeriod} customStart={customStart} customEnd={customEnd} setCustomStart={setCustomStart} setCustomEnd={setCustomEnd} totalIncome={totalIncome} totalExpense={totalExpense} profit={profit} margin={margin} chartData={chartData} expenseData={expenseData} transactions={storeTransactions} categories={storeCategories} openTransaction={openTransaction} onEditTransaction={editTransaction} onChartSelect={(date, type, granularity) => setChartDetail({ date, type, granularity })} />}
+          {activeStore && view === "overview" && <Overview profitabilityPanel={<ProfitabilityPanel store={activeStore} stores={stores} categories={categories} transactions={storeTransactions} periodTransactions={periodTransactions} onSelect={setActiveStoreId} onSave={(profitSettings) => updateStore(activeStore.id, { profitSettings })}/>} activeStore={activeStore} period={period} setPeriod={setPeriod} customStart={customStart} customEnd={customEnd} setCustomStart={setCustomStart} setCustomEnd={setCustomEnd} totalIncome={totalIncome} totalExpense={totalExpense} profit={profit} margin={margin} chartData={chartData} expenseData={expenseData} transactions={storeTransactions} categories={storeCategories} openTransaction={openTransaction} onEditTransaction={editTransaction} onChartSelect={(date, type, granularity) => setChartDetail({ date, type, granularity })} />}
           {activeStore && view === "products" && <ProductsView key={activeStore.id} store={activeStore} products={products.filter((item) => item.storeId === activeStore.id)} onAdd={addProduct} onUpdate={updateProduct} onStock={adjustStock}/>}
           {activeStore && view === "orders" && <OrdersView products={products.filter((item) => item.storeId === activeStore.id)} onProducts={() => setView("products")} key={activeStore.id} store={activeStore} orders={orders.filter((item) => item.storeId === activeStore.id)} onAdd={addOrder} onStage={updateOrderStage} onEdit={editOrderDetails} onUpdate={updateOrder} onDelete={deleteOrder} onComplete={completeOrder} onCancel={cancelOrder} />}
           {activeStore && view === "transactions" && <TransactionsView transactions={transactions.filter((item) => item.storeId === activeStore.id)} categories={storeCategories} store={activeStore} onAdd={() => openTransaction("income")} onEdit={editTransaction} />}

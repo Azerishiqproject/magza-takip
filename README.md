@@ -93,15 +93,15 @@ Finans raporu teslim edilen siparişlerin finans kayıtlarını ve manuel gelir/
 
 **Mağazalarım** bölümünde mağaza arayabilir, mağaza veya klasör oluşturabilirsiniz. Mağazanın **Yönet** düğmesi ad, domain, klasör ve aktif/duraklatılmış durumunu düzenler. Silme işlemi bu ekrandan ayrı onayla başlatılır. Raporlar ile Mağazalarım arasında geçiş yapmak rapor seçimlerini korur.
 
-## Mağaza bazında ROAS ve tahmini kâr
+## Mağaza bazında ROAS ve ürün kârı
 
-Ana sayfa, ayarı olmayan mağaza için ilk açılışta kargo dahil ürün maliyeti, ortalama satış fiyatı ve reklam gideri kategorilerini sorar. Bu değerler otomatik tahmin edilmez; her mağazaya ayrı kaydedilir ve “Maliyet ayarları” ile değiştirilebilir.
+Ana sayfadaki **ROAS ve ürün kârı** düğmesi ayrı bir pencere açar. Pencere kapatılabilir; sayfa açılışında otomatik gösterilmez. Ayarı olmayan mağaza için ilk açılışta kargo dahil ürün maliyeti, ortalama satış fiyatı ve reklam gideri kategorileri sorulur. Her mağazanın ayarı ayrı kaydedilir.
 
 - Gelir kaynağı varsayılan olarak **Sipariş gelirleri** kategorisidir; ayarlardan gelir kategorileri seçilebilir. Sipariş adedi, ürün adedi ve ürün kayıtlarındaki fiyatlar bu hesapta kullanılmaz.
-- Ürün maliyet payı = seçili kategorilerin gelir toplamı × (girilen kargo dahil ürün maliyeti / girilen ortalama satış fiyatı). Yuvarlama toplam tutarda yapılır.
+- Maliyet payı = seçili gelir kategorilerinin toplamı × (girilen kargo dahil ürün maliyeti / girilen ortalama satış fiyatı). Yuvarlama toplam tutarda yapılır.
 - ROAS = seçili satış geliri / kullanıcının seçtiği reklam kategorilerinin gider toplamı. Reklam gideri yoksa oran hesaplanmaz.
-- Tahmini satış kârı = satış geliri − maliyet payı − reklam gideri − diğer giderler. Stok/ürün alımı olarak seçilen giderler maliyet payına ek olarak tekrar düşülmez. Kargo maliyete dahil olduğu için otomatik sipariş kargo kayıtları ve kargo/nakliye kategorilerindeki giderler de bu modelde tekrar düşülmez. Diğer gelirler bu hesaba dahil edilmez.
-- Dönemin başa baş ROAS'ı = satış geliri / (satış geliri − maliyet payı − reklam dışındaki diğer giderler). Katkı pozitif değilse sonlu bir başa baş oranı gösterilmez.
-- Ürün planı = ortalama satış fiyatı / (ortalama satış fiyatı − kargo dahil ürün maliyeti). Ayrı kargo/paket maliyeti sorulmaz. Önceden kaydedilmiş ayrı kargo tahmini bu hesapta kullanılmaz.
+- Satılan ürünlerin kârı = satış geliri − maliyet payı − seçili reklam gideri. Diğer giderler, stok alımları, ayrı kargo kayıtları ve diğer gelirler bu hesaplamaya dahil edilmez.
+- Başa baş ROAS = satış geliri / (satış geliri − maliyet payı). Katkı pozitif değilse sonlu bir başa baş oranı gösterilmez.
+- Ayar önizlemesi = ortalama satış fiyatı / (ortalama satış fiyatı − kargo dahil ürün maliyeti). Ayrı kargo/paket maliyeti sorulmaz.
 
-Ortalama fiyat ve maliyet değiştirildiğinde geçmiş dönem tahminleri de güncellenir. Kaydedilmiş gelir-gider ve siparişler değiştirilmez. Eski gelir-gider farkı ayrıca gösterilir. Görsel ROAS göstergesi ve “Tüm mağazaların kârlılığı” tablosu ana sayfadaki dönem filtresini kullanır; farklı para birimleri birleştirilmez. Bu ROAS tüm seçili satışların oranıdır; reklam platformundan alınan bir satış atfı metriği değildir.
+Pencerede ROAS, başa baş eşiği, ürün kârı ve görsel performans göstergesi bulunur. Mağaza karşılaştırması da pencerenin içindedir. Ana sayfadaki dönem filtresi kullanılır; mağazalar kendi para birimleriyle gösterilir. Ortalama fiyat ve maliyet değiştirildiğinde geçmiş dönem tahminleri de güncellenir. Mevcut gelir-gider ve sipariş kayıtları değişmez. Genel gelir-gider raporları tüm kayıtları kullanmaya devam eder.

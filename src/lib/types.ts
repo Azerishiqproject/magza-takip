@@ -15,7 +15,6 @@ export interface ProfitSettings {
   averageUnitCost: number;
   averageSalePrice: number;
   advertisingCategoryIds: string[];
-  productPurchaseCategoryIds: string[];
   salesCategoryIds: string[];
 }
 
