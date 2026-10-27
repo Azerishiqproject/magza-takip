@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { eachDayOfInterval, endOfDay, format, startOfDay, startOfMonth, startOfWeek, startOfYear, subDays } from "date-fns";
 import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ArrowDownRight, ArrowUpRight, CalendarDays, Download, Layers3, Pencil, Plus, Search, TrendingUp, WalletCards, X } from "lucide-react";
@@ -14,6 +14,7 @@ import { ProductsView } from "./products-view";
 import { OrdersView } from "./orders-view";
 import { StoresView } from "./stores-view";
 import { StorePicker } from "./store-picker";
+import { ProfitabilityPanel, StoreProfitabilityTable } from "./profitability-panel";
 
 const PERIODS: { id: Period; label: string }[] = [
   { id: "day", label: "Bugün" }, { id: "week", label: "Hafta" }, { id: "month", label: "Ay" }, { id: "year", label: "Yıl" }, { id: "custom", label: "Özel" },
@@ -51,13 +52,14 @@ export function Dashboard() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const activeStore = stores.find((store) => store.id === activeStoreId) ?? stores[0];
 
-  const storeTransactions = useMemo(() => {
+  const periodTransactions = useMemo(() => {
     const [rangeStart, rangeEnd] = getRange(period, customStart, customEnd);
-    return transactions.filter((item) => {
-    const date = new Date(`${item.date}T12:00:00`);
-    return item.storeId === activeStore?.id && date >= rangeStart && date <= rangeEnd;
-    });
-  }, [transactions, activeStore?.id, period, customStart, customEnd]);
+    return [...new Map(transactions.filter((item) => {
+      const date = new Date(`${item.date}T12:00:00`);
+      return date >= rangeStart && date <= rangeEnd;
+    }).map((item) => [item.id, item])).values()];
+  }, [transactions, period, customStart, customEnd]);
+  const storeTransactions = useMemo(() => periodTransactions.filter((item) => item.storeId === activeStore?.id), [periodTransactions, activeStore?.id]);
   const storeCategories = categories.filter((category) => category.storeId === activeStore?.id);
 
   const totalIncome = storeTransactions.filter((item) => item.type === "income").reduce((sum, item) => sum + item.amount, 0);
@@ -107,7 +109,7 @@ export function Dashboard() {
         </header>
 
         <div className="mx-auto max-w-[1500px] p-4 md:p-6">
-          {activeStore && view === "overview" && <Overview activeStore={activeStore} period={period} setPeriod={setPeriod} customStart={customStart} customEnd={customEnd} setCustomStart={setCustomStart} setCustomEnd={setCustomEnd} totalIncome={totalIncome} totalExpense={totalExpense} profit={profit} margin={margin} chartData={chartData} expenseData={expenseData} transactions={storeTransactions} categories={storeCategories} openTransaction={openTransaction} onEditTransaction={editTransaction} onChartSelect={(date, type, granularity) => setChartDetail({ date, type, granularity })} />}
+          {activeStore && view === "overview" && <Overview profitabilityPanel={<><ProfitabilityPanel key={activeStore.id} store={activeStore} categories={categories} transactions={storeTransactions} onSave={(profitSettings) => updateStore(activeStore.id, { profitSettings })}/><StoreProfitabilityTable stores={stores} categories={categories} transactions={periodTransactions} onSelect={setActiveStoreId}/></>} activeStore={activeStore} period={period} setPeriod={setPeriod} customStart={customStart} customEnd={customEnd} setCustomStart={setCustomStart} setCustomEnd={setCustomEnd} totalIncome={totalIncome} totalExpense={totalExpense} profit={profit} margin={margin} chartData={chartData} expenseData={expenseData} transactions={storeTransactions} categories={storeCategories} openTransaction={openTransaction} onEditTransaction={editTransaction} onChartSelect={(date, type, granularity) => setChartDetail({ date, type, granularity })} />}
           {activeStore && view === "products" && <ProductsView key={activeStore.id} store={activeStore} products={products.filter((item) => item.storeId === activeStore.id)} onAdd={addProduct} onUpdate={updateProduct} onStock={adjustStock}/>}
           {activeStore && view === "orders" && <OrdersView products={products.filter((item) => item.storeId === activeStore.id)} onProducts={() => setView("products")} key={activeStore.id} store={activeStore} orders={orders.filter((item) => item.storeId === activeStore.id)} onAdd={addOrder} onStage={updateOrderStage} onEdit={editOrderDetails} onUpdate={updateOrder} onDelete={deleteOrder} onComplete={completeOrder} onCancel={cancelOrder} />}
           {activeStore && view === "transactions" && <TransactionsView transactions={transactions.filter((item) => item.storeId === activeStore.id)} categories={storeCategories} store={activeStore} onAdd={() => openTransaction("income")} onEdit={editTransaction} />}
@@ -137,18 +139,19 @@ export function Dashboard() {
   );
 }
 
-function Overview(props: { activeStore: Store; period: Period; setPeriod: (p: Period) => void; customStart: string; customEnd: string; setCustomStart: (v: string) => void; setCustomEnd: (v: string) => void; totalIncome: number; totalExpense: number; profit: number; margin: number; chartData: ChartPoint[]; expenseData: { name: string; value: number; color: string }[]; transactions: import("@/lib/types").Transaction[]; categories: Category[]; openTransaction: (type: TransactionType) => void; onEditTransaction: (transaction: Transaction) => void; onChartSelect: (date: string, type: TransactionType, granularity: ChartGranularity) => void }) {
+function Overview(props: { profitabilityPanel: ReactNode; activeStore: Store; period: Period; setPeriod: (p: Period) => void; customStart: string; customEnd: string; setCustomStart: (v: string) => void; setCustomEnd: (v: string) => void; totalIncome: number; totalExpense: number; profit: number; margin: number; chartData: ChartPoint[]; expenseData: { name: string; value: number; color: string }[]; transactions: import("@/lib/types").Transaction[]; categories: Category[]; openTransaction: (type: TransactionType) => void; onEditTransaction: (transaction: Transaction) => void; onChartSelect: (date: string, type: TransactionType, granularity: ChartGranularity) => void }) {
   const { activeStore: store } = props;
   return <>
     <div className="mb-5 flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
       <div><div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-[#2dd4bf] shadow-[0_0_10px_#2dd4bf]" /><p className="text-[10px] font-medium text-[#7f8994]">Finansal durum güncel</p></div><h2 className="mt-2 text-[20px] font-semibold tracking-[-.03em]">Merhaba, Mithra ekibi</h2><p className="mt-1 text-[11px] text-[#77818b]">{store.name} mağazasının performans özeti.</p></div>
       <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto"><div className="grid w-full grid-cols-5 rounded-xl border border-[#27303a] bg-[#0d1217] p-1 sm:flex sm:w-auto">{PERIODS.map((item) => <button key={item.id} onClick={() => props.setPeriod(item.id)} className={`rounded-lg px-2 py-1.5 text-[9px] font-semibold transition sm:px-3 ${props.period === item.id ? "bg-[#26312f] text-[#79dfd2]" : "text-[#6f7a84] hover:text-white"}`}>{item.label}</button>)}</div>{props.period === "custom" && <div className="flex max-w-full items-center gap-1.5 overflow-x-auto rounded-xl border border-[#27303a] bg-[#0d1217] p-1.5"><CalendarDays size={13} className="ml-1 shrink-0 text-[#78838d]" /><input type="date" value={props.customStart} onChange={(e) => props.setCustomStart(e.target.value)} className="min-w-[108px] bg-transparent text-[9px] text-[#aeb7bf] outline-none" /><span className="text-[#4e5963]">—</span><input type="date" value={props.customEnd} onChange={(e) => props.setCustomEnd(e.target.value)} className="min-w-[108px] bg-transparent text-[9px] text-[#aeb7bf] outline-none" /></div>}<button onClick={() => props.openTransaction("expense")} className="rounded-xl border border-[#303840] bg-[#151b21] px-3.5 py-2 text-[10px] font-semibold text-[#d8dde1] hover:border-[#56606a]">Gider ekle</button><button onClick={() => props.openTransaction("income")} className="flex items-center gap-2 rounded-xl bg-[#2dd4bf] px-3.5 py-2 text-[10px] font-bold text-[#06110f] hover:bg-[#5ee0d0]"><Plus size={14} />Gelir ekle</button></div>
     </div>
+    {props.profitabilityPanel}
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <Metric title="Net kâr" value={money(props.profit, store.currency)} note="Seçili dönemin sonucu" icon={TrendingUp} tone="teal" />
+      <Metric title="Gelir-gider farkı" value={money(props.profit, store.currency)} note="Kaydedilmiş tüm gelirler − giderler" icon={TrendingUp} tone="teal" />
       <Metric title="Toplam gelir" value={money(props.totalIncome, store.currency)} note={`${props.transactions.filter(t => t.type === "income").length} gelir kaydı`} icon={ArrowUpRight} tone="blue" />
       <Metric title="Toplam gider" value={money(props.totalExpense, store.currency)} note={`${props.transactions.filter(t => t.type === "expense").length} gider kaydı`} icon={ArrowDownRight} tone="red" />
-      <Metric title="Kâr marjı" value={`%${props.margin.toFixed(1)}`} note="Gelire göre net marj" icon={WalletCards} tone="amber" />
+      <Metric title="Kayıt marjı" value={`%${props.margin.toFixed(1)}`} note="Gelire göre net marj" icon={WalletCards} tone="amber" />
     </div>
     <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,.7fr)]">
       <section className="panel min-h-[360px] rounded-2xl p-4 md:p-5"><SectionTitle title="Gelir ve gider akışı" subtitle="Günün üzerine gelin, gelir veya gider noktasına tıklayın" action={<button className="flex items-center gap-1.5 text-[9px] text-[#84909a]"><Download size={12} />Dışa aktar</button>} /><div className="mt-5 h-[278px]"><ResponsiveContainer width="100%" height="100%"><AreaChart data={props.chartData} margin={{ left: -24, right: 4, top: 10 }}><defs><linearGradient id="income" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2dd4bf" stopOpacity={.28}/><stop offset="95%" stopColor="#2dd4bf" stopOpacity={0}/></linearGradient><linearGradient id="expense" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#ff7468" stopOpacity={.12}/><stop offset="95%" stopColor="#ff7468" stopOpacity={0}/></linearGradient></defs><CartesianGrid stroke="#252d35" strokeDasharray="3 5" vertical={false}/><XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: "#68737d", fontSize: 9 }} minTickGap={25}/><YAxis axisLine={false} tickLine={false} tick={{ fill: "#68737d", fontSize: 9 }} tickFormatter={(v) => `${Math.round(v/1000)}K`}/><Tooltip content={({ active, payload }) => { const point = payload?.[0]?.payload as ChartPoint | undefined; if (!active || !point) return null; const pointItems = props.transactions.filter(item => point.granularity === "month" ? item.date.startsWith(point.date) : item.date === point.date); return <div className="min-w-[190px] rounded-xl border border-[#2c3740] bg-[#111820] p-3 shadow-2xl"><p className="text-[9px] font-semibold text-white">{point.label} özeti</p><div className="mt-2.5 space-y-2"><div className="flex items-center justify-between gap-5"><span className="text-[9px] text-[#6ddccd]">Gelir · {pointItems.filter(item => item.type === "income").length} kayıt</span><strong className="text-[10px] text-[#6ddccd]">{money(point.gelir, store.currency)}</strong></div><div className="flex items-center justify-between gap-5"><span className="text-[9px] text-[#ff887d]">Gider · {pointItems.filter(item => item.type === "expense").length} kayıt</span><strong className="text-[10px] text-[#ff887d]">{money(point.gider, store.currency)}</strong></div></div><p className="mt-2.5 border-t border-[#29323a] pt-2 text-[8px] text-[#68737d]">Detay için renkli noktaya tıklayın</p></div>; }}/><Area type="monotone" dataKey="gelir" stroke="#2dd4bf" strokeWidth={2} fill="url(#income)" activeDot={(dotProps) => <ClickableDot {...dotProps} color="#2dd4bf" onSelect={(date, granularity) => props.onChartSelect(date, "income", granularity)} />} /><Area type="monotone" dataKey="gider" stroke="#ff7468" strokeWidth={1.5} fill="url(#expense)" activeDot={(dotProps) => <ClickableDot {...dotProps} color="#ff7468" onSelect={(date, granularity) => props.onChartSelect(date, "expense", granularity)} />} /></AreaChart></ResponsiveContainer></div></section>

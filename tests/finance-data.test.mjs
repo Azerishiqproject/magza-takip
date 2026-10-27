@@ -507,3 +507,40 @@ test("three different products can be saved and deleted as one bundle", async ()
   await app.render().deleteOrder(order.id);
   assert.equal(app.cloud.get("products/p1").stock, 10); assert.equal(app.cloud.get("products/p2").stock, 8); assert.equal(app.cloud.get("products/p3").stock, 6);
 });
+
+test("store profitability settings persist without changing finance records or other stores", async () => {
+  const app = harness();
+  const categories = [
+    { id: "sales", storeId: "s1", type: "income", name: "Sipariş gelirleri" },
+    { id: "ads", storeId: "s1", type: "expense", name: "Seçilen reklam kategorisi" },
+  ];
+  const data = app.online({ stores: [baseStore, { ...baseStore, id: "s2", name: "Başka mağaza", domain: "other.com" }], categories });
+  const profitSettings = { averageSalePrice: 45, averageUnitCost: 12, advertisingCategoryIds: ["ads"], productPurchaseCategoryIds: [], salesCategoryIds: ["sales"] };
+  const beforeOrders = JSON.stringify(app.render().orders);
+  await data.updateStore("s1", { profitSettings });
+  assert.deepEqual(app.cloud.get("stores/s1").profitSettings, profitSettings);
+  assert.deepEqual(app.render().stores.find(s => s.id === "s1").profitSettings, profitSettings);
+  assert.equal(app.render().stores.find(s => s.id === "s2").profitSettings, undefined);
+  assert.equal(JSON.stringify(app.render().orders), beforeOrders);
+  assert.equal(app.render().transactions.length, 0);
+  app.emit("stores", [{ ...baseStore, ...app.cloud.get("stores/s1") }]);
+  assert.deepEqual(app.render().stores[0].profitSettings, profitSettings);
+});
+
+test("failed profitability settings save does not update local state", async () => {
+  const app = harness();
+  const data = app.online({ categories: [{ id: "ads", storeId: "s1", type: "expense", name: "Reklam" }] });
+  app.fail();
+  await assert.rejects(data.updateStore("s1", { profitSettings: { averageSalePrice: 45, averageUnitCost: 12, advertisingCategoryIds: ["ads"], productPurchaseCategoryIds: [], salesCategoryIds: [] } }));
+  assert.equal(app.render().stores[0].profitSettings, undefined);
+});
+
+test("a snapshot arriving before addTransaction resolves does not double the balance", async () => {
+  const app = harness(); const data = app.online({ orders: [], transactions: [] });
+  const pending = data.addTransaction({ storeId: "s1", categoryId: "sales", title: "Sale", type: "income", amount: 100, date: "2026-10-27" });
+  const entry = [...app.cloud].find(([path]) => path.startsWith("transactions/"));
+  app.emit("transactions", [{ id: entry[0].split("/")[1], ...entry[1] }]);
+  await pending;
+  assert.equal(app.render().transactions.length, 1);
+  assert.equal(app.render().transactions.reduce((sum, record) => sum + record.amount, 0), 100);
+});

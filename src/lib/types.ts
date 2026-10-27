@@ -8,6 +8,15 @@ export interface Store {
   status: "active" | "paused";
   color: string;
   folderId?: string | null;
+  profitSettings?: ProfitSettings;
+}
+
+export interface ProfitSettings {
+  averageUnitCost: number;
+  averageSalePrice: number;
+  advertisingCategoryIds: string[];
+  productPurchaseCategoryIds: string[];
+  salesCategoryIds: string[];
 }
 
 export interface StoreFolder {
