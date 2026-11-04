@@ -1,4 +1,4 @@
-import type { LegacyCostMapping, OrderItemInput, Product, Store } from "./types";
+import type { LegacyCostMapping, Product, Store } from "./types";
 
 export const normalizeLegacyLabel = (value: string) => value.trim().toLocaleLowerCase("tr-TR").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ı/g, "i").replace(/ə/g, "e").replace(/\s+/g, " ");
 
@@ -28,13 +28,20 @@ export function commonLegacyPurchasePrice(store: Store, products: Product[]): nu
   return own[0].purchasePrice;
 }
 
-export function validCostMapping(mapping: LegacyCostMapping, products: Product[], storeId: string) {
+export function validCostMapping(mapping: LegacyCostMapping, products: Product[], storeId: string, stores: Store[] = []) {
   if (!mapping || typeof mapping !== "object") return false;
   if ("excluded" in mapping) return mapping.excluded === true;
   if (!Number.isSafeInteger(mapping.packageCount) || mapping.packageCount <= 0 || !Array.isArray(mapping.items) || !mapping.items.length) return false;
   let units = 0;
-  for (const item of mapping.items as OrderItemInput[]) {
-    if (!item || !products.some((p) => p.id === item.productId && p.storeId === storeId) || !Number.isSafeInteger(item.quantity) || item.quantity <= 0) return false;
+  for (const item of mapping.items) {
+    if (!item || typeof item !== "object" || ("productId" in item && "sourceStoreId" in item) || !Number.isSafeInteger(item.quantity) || item.quantity <= 0) return false;
+    if ("productId" in item) {
+      if (!products.some((p) => p.id === item.productId && p.storeId === storeId)) return false;
+    } else if ("sourceStoreId" in item) {
+      const own = stores.find((s) => s.id === storeId);
+      const source = stores.find((s) => s.id === item.sourceStoreId);
+      if (!own || !source || own.currency !== source.currency || source.id === storeId) return false;
+    } else return false;
     units += item.quantity;
   }
   return Number.isSafeInteger(units) && mapping.packageCount <= units;

@@ -627,3 +627,17 @@ test("legacy ROAS mappings persist only on store settings and do not touch inven
   await assert.rejects(result.updateStore("s1", { profitSettings: { ...profitSettings, costMappings: { "income:manual": { items: [{ productId: "not-ours", quantity: 2 }], packageCount: 1 } } } }), /bu mağazadan ürün/);
   assert.deepEqual(app.cloud.get("stores/s1").profitSettings.costMappings, profitSettings.costMappings);
 });
+
+test("explicit common-cost source persists as a store reference without moving stock or financial records", async () => {
+  const app = harness();
+  const source = { ...baseStore, id: "s2", name: "Sibotes", domain: "sibotes.com" };
+  const categories = [{ id: "sales", storeId: "s1", type: "income", name: "Satış" }, { id: "ads", storeId: "s1", type: "expense", name: "Reklam" }];
+  const data = app.online({ stores: [baseStore, source], categories, products: [baseProduct, { ...baseProduct, id: "source-product", storeId: source.id, purchasePrice: 10 }] });
+  const previous = structuredClone([data.orders, data.transactions, data.products]);
+  const profitSettings = { advertisingCategoryIds: ["ads"], salesCategoryIds: ["sales"], costMappings: { "order:o1": { items: [{ sourceStoreId: "s2", quantity: 1 }], packageCount: 1 } } };
+  await data.updateStore("s1", { profitSettings });
+  assert.deepEqual(app.cloud.get("stores/s1").profitSettings.costMappings, profitSettings.costMappings);
+  const result = app.render();
+  assert.deepEqual([result.orders, result.transactions, result.products], previous);
+  assert.ok(app.commits.flat().every(op => op.reference.path === "stores/s1"));
+});

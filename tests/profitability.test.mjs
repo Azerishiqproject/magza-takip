@@ -328,3 +328,53 @@ test("bare numbers on manual income may be invoice IDs and are never inferred as
   const r = calculate(store, categories, [tx("invoice", "sales", "income", 72, { title: "2026" })], [], singleProduct);
   assert.equal(r.costComplete, false); assert.equal(r.profit, null); assert.equal(r.unmatchedRecords, 1);
 });
+
+test("explicit same-currency source store uses current common stock price without assigning a SKU", () => {
+  const source = { id: "s2", name: "Sibotes", currency: "AZN" };
+  const sourceProducts = ["small", "large"].map(id => ({ id, storeId: "s2", name: id, purchasePrice: 10 }));
+  const mapped = { ...store, profitSettings: { ...settings, costMappings: { "order:o1": { items: [{ sourceStoreId: "s2", quantity: 1 }], packageCount: 1 } } } };
+  const oldOrder = order("o1", [], { product: "1 ədəd sibotes", items: undefined });
+  const allProducts = [...products, ...sourceProducts];
+  const unchanged = structuredClone({ oldOrder, allProducts, mapped });
+  const records = [sale("o1", 45), tx("ad", "ads", "expense", 10)];
+  const first = calculate(mapped, categories, records, [oldOrder], allProducts, [mapped, source]);
+  assert.equal(first.costComplete, true); assert.equal(first.purchaseCost, 10);
+  assert.equal(first.productCost, 15); assert.equal(first.profit, 20); assert.equal(first.breakEven, 1.5);
+  const updated = allProducts.map(p => p.storeId === source.id ? { ...p, purchasePrice: 12 } : p);
+  assert.equal(calculate(mapped, categories, records, [oldOrder], updated, [mapped, source]).profit, 18);
+  assert.equal(orderCost(mapped, oldOrder, allProducts, 45, "order:o1", [mapped, source]).totalCost, 15);
+  assert.deepEqual({ oldOrder, allProducts, mapped }, unchanged);
+  assert.doesNotThrow(() => validateProfitSettings(mapped.profitSettings, store.id, categories, allProducts, [mapped, source]));
+});
+
+test("foreign common cost requires explicit source and verified matching currency", () => {
+  const source = { id: "s2", currency: "AZN" };
+  const foreignProducts = [{ id: "foreign", storeId: "s2", purchasePrice: 10 }];
+  const mapped = { ...store, profitSettings: { ...settings, costMappings: { "order:o1": { items: [{ sourceStoreId: "s2", quantity: 1 }], packageCount: 1 } } } };
+  const oldOrder = order("o1", [], { product: "1 ədəd sibotes", items: undefined });
+  for (const stores of [[mapped], [mapped, { ...source, currency: "USD" }]]) {
+    assert.equal(orderCost(mapped, oldOrder, foreignProducts, 45, "order:o1", stores).totalCost, null);
+    assert.throws(() => validateProfitSettings(mapped.profitSettings, store.id, categories, foreignProducts, stores));
+  }
+  assert.equal(orderCost(store, oldOrder, foreignProducts, 45, "order:o1", [store, source]).totalCost, null);
+  const foreignId = { ...mapped, profitSettings: { ...settings, costMappings: { "order:o1": { items: [{ productId: "foreign", quantity: 1 }], packageCount: 1 } } } };
+  assert.equal(orderCost(foreignId, oldOrder, foreignProducts, 45, "order:o1", [foreignId, source]).totalCost, null);
+});
+
+test("diverging or missing source stock prices prevent misleading profit", () => {
+  const source = { id: "s2", currency: "AZN" };
+  const mapped = { ...store, profitSettings: { ...settings, costMappings: { "order:o1": { items: [{ sourceStoreId: "s2", quantity: 1 }], packageCount: 1 } } } };
+  for (const sourceProducts of [[], [{ id: "p1", storeId: "s2" }], [{ id: "p1", storeId: "s2", purchasePrice: 10 }, { id: "p2", storeId: "s2", purchasePrice: 12 }]]) {
+    const result = calculate(mapped, categories, [sale("o1", 45), tx("ad", "ads", "expense", 10)], [order("o1")], [...products, ...sourceProducts], [mapped, source]);
+    assert.equal(result.costComplete, false); assert.equal(result.profit, null); assert.equal(result.breakEven, null); assert.equal(result.roas, 4.5);
+  }
+});
+
+test("a cost item cannot combine a product and a source store", () => {
+  const source = { id: "s2", currency: "AZN" };
+  const profitSettings = { ...settings, costMappings: { "order:o1": { items: [{ productId: "main", sourceStoreId: "s2", quantity: 1 }], packageCount: 1 } } };
+  const mapped = { ...store, profitSettings };
+  const allProducts = [...products, { id: "foreign", storeId: "s2", purchasePrice: 100 }];
+  assert.throws(() => validateProfitSettings(profitSettings, store.id, categories, allProducts, [mapped, source]));
+  assert.equal(orderCost(mapped, order("o1"), allProducts, 40, "order:o1", [mapped, source]).totalCost, null);
+});

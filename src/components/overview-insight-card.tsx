@@ -9,15 +9,15 @@ import { reportMoney } from "@/lib/store-analytics";
 import type { Category, Order, Product, Store, Transaction } from "@/lib/types";
 import { RoasGauge } from "./profitability-panel";
 
-type Props = { store: Store; categories: Category[]; transactions: Transaction[]; orders: Order[]; products: Product[]; onOpenRoas: () => void };
+type Props = { stores: Store[]; store: Store; categories: Category[]; transactions: Transaction[]; orders: Order[]; products: Product[]; onOpenRoas: () => void };
 const ratio = (value: number | null) => value === null ? "—" : `${value.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x`;
 const percent = (value: number) => `%${value.toLocaleString("tr-TR", { maximumFractionDigits: 1 })}`;
 
-export function OverviewInsightCard({ store, categories, transactions, orders, products, onOpenRoas }: Props) {
+export function OverviewInsightCard({ stores, store, categories, transactions, orders, products, onOpenRoas }: Props) {
   const [view, setView] = useState<"expenses" | "roas">("expenses");
   const [showAll, setShowAll] = useState(false);
   const expenses = useMemo(() => buildExpenseBreakdown(store.id, categories, transactions), [store.id, categories, transactions]);
-  const roas = useMemo(() => calculateProfitability(store, categories, transactions, orders, products), [store, categories, transactions, orders, products]);
+  const roas = useMemo(() => calculateProfitability(store, categories, transactions, orders, products, stores), [store, stores, categories, transactions, orders, products]);
   const amount = (value: number) => reportMoney(value, store.currency);
   const listed = showAll ? expenses.items : expenses.items.slice(0, 4);
   return <section aria-label="Gider dağılımı ve ROAS özeti" className="panel flex min-w-0 flex-col rounded-2xl p-4 md:p-5">

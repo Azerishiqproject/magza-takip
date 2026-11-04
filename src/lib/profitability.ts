@@ -14,7 +14,7 @@ export function suggestedProfitCategories(storeId: string, categories: Category[
   };
 }
 
-export function validateProfitSettings(settings: ProfitSettings, storeId: string, categories: Category[], products: Product[] = []) {
+export function validateProfitSettings(settings: ProfitSettings, storeId: string, categories: Category[], products: Product[] = [], stores: Store[] = []) {
   if (!settings) throw new Error("Gelir ve reklam kategorilerini seçin.");
   for (const field of ["advertisingCategoryIds", "salesCategoryIds"] as const) {
     if (!Array.isArray(settings[field]) || settings[field].some((id) => !categories.some((c) => c.id === id && c.storeId === storeId && c.type === (field === "salesCategoryIds" ? "income" : "expense")))) throw new Error("Bu mağazaya ait geçerli kategoriler seçin.");
@@ -24,7 +24,7 @@ export function validateProfitSettings(settings: ProfitSettings, storeId: string
   if (settings.costMappings !== undefined) {
     if (!settings.costMappings || typeof settings.costMappings !== "object" || Array.isArray(settings.costMappings)) throw new Error("Eski kayıt eşleştirmelerini kontrol edin.");
     for (const [key, mapping] of Object.entries(settings.costMappings)) {
-      if (!/^(order|income):.+$/.test(key) || !validCostMapping(mapping, products, storeId) || (key.startsWith("order:") && ("excluded" in mapping || mapping.packageCount !== 1))) throw new Error("Eski kayıt için bu mağazadan ürün, geçerli adet ve paket sayısı seçin.");
+      if (!/^(order|income):.+$/.test(key) || !validCostMapping(mapping, products, storeId, stores) || (key.startsWith("order:") && ("excluded" in mapping || mapping.packageCount !== 1))) throw new Error("Eski kayıt için bu mağazadan ürün veya aynı para biriminde geçerli bir maliyet kaynağı, adet ve paket sayısı seçin.");
     }
   }
 }
@@ -33,7 +33,7 @@ export type Profitability = ReturnType<typeof calculateProfitability>;
 
 // Revenue comes only from selected financial records. Link each receipt to its
 // completed order, charging products, shipping and packaging once per package.
-export function calculateProfitability(store: Store, categories: Category[], transactions: Transaction[], orders: Order[] = [], products: Product[] = []) {
+export function calculateProfitability(store: Store, categories: Category[], transactions: Transaction[], orders: Order[] = [], products: Product[] = [], stores: Store[] = [store]) {
   const roles = store.profitSettings ?? suggestedProfitCategories(store.id, categories);
   const categoryMap = new Map(categories.filter((c) => c.storeId === store.id).map((c) => [c.id, c]));
   const salesIds = (roles.salesCategoryIds.length ? roles.salesCategoryIds : suggestedProfitCategories(store.id, categories).salesCategoryIds).filter((id) => categoryMap.get(id)?.type === "income");
@@ -69,7 +69,7 @@ export function calculateProfitability(store: Store, categories: Category[], tra
   const orderResults = [...receipts.values()].map(({ order, revenue, date, sourceKey, kind, label }) => ({
     orderId: order.id, customerName: order.customerName, product: order.product, date, revenue: revenue / 100,
     sourceKey, kind, label,
-    ...calculateOrderProfitability(store, order, products, revenue / 100, sourceKey),
+    ...calculateOrderProfitability(store, order, products, revenue / 100, sourceKey, stores),
   })).sort((a, b) => b.date.localeCompare(a.date) || a.orderId.localeCompare(b.orderId));
   const unresolved = orderResults.filter((o) => o.totalCost === null);
   const unmatched = unresolved.filter((o) => o.kind === "income");

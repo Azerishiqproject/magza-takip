@@ -17,7 +17,7 @@ type Props = Data & Omit<SettingsProps, "onDone"> & { stores: Store[]; periodTra
 export function ProfitabilityPanel({ store, stores, categories, transactions, orders, products, periodTransactions, onSelect, onSave, open, onOpenChange: setOpen, onProducts, periodLabel }: Props) {
   const [editing, setEditing] = useState(false);
   const launcher = useRef<HTMLButtonElement>(null);
-  const result = useMemo(() => calculateProfitability(store, categories, transactions, orders, products), [store, categories, transactions, orders, products]);
+  const result = useMemo(() => calculateProfitability(store, categories, transactions, orders, products, stores), [store, stores, categories, transactions, orders, products]);
   useEffect(() => {
     if (!open) return;
     const escape = (event: KeyboardEvent) => {
@@ -47,7 +47,7 @@ export function ProfitabilityPanel({ store, stores, categories, transactions, or
           <p>Eksik maliyetler sıfır sayılmaz. ROAS gösterilir; kâr ve başa baş eşiği bilgiler tamamlanınca hesaplanır.</p>
           <button onClick={() => { setEditing(false); onProducts(); }} className="mt-2 rounded-lg border border-[#82653f] px-3 py-2 font-semibold">Ürün alış fiyatlarını gir</button>
         </div>}
-        <LegacyCostResolver store={store} products={products} issues={result.costReview} onSave={onSave}/>
+        <LegacyCostResolver stores={stores} store={store} products={products} issues={result.costReview} onSave={onSave}/>
         <div className="grid gap-3 md:grid-cols-3">
           <div className="rounded-xl border border-[#2b4939] bg-[#12231c] p-4"><p className="flex items-center gap-2 text-xs text-[#a6b8af]"><TrendingUp size={14}/>Satılan ürünlerin kârı</p><p className={`mt-3 break-words text-3xl font-semibold tracking-tight ${result.profit !== null && result.profit < 0 ? "text-[#ff9b92]" : "text-[#6ce0b4]"}`}>{amount(result.profit)}</p><p className="mt-2 text-xs leading-5 text-[#93a59e]">Gelir − alış maliyeti − kargo − paket − reklam</p></div>
           <div className="rounded-xl border border-[#27372f] bg-[#0e1714] p-4"><p className="text-xs text-[#a6b8af]">Mevcut ROAS</p><p className="mt-3 text-3xl font-semibold text-[#8ce1d0]">{ratio(result.roas)}</p><p className="mt-2 text-xs leading-5 text-[#93a59e]">{result.noAdvertisingCategory ? "Reklam gideri kategorisini seçin." : result.roas === null ? "Bu dönemde seçili reklam kategorisinde gider yok." : `1 ${store.currency} reklam → ${result.roas.toLocaleString("tr-TR", { maximumFractionDigits: 2 })} ${store.currency} satış geliri`}</p></div>
@@ -130,7 +130,7 @@ function OrderProfitabilityTable({ result, store }: { result: Profitability; sto
 }
 
 function StoreProfitabilityTable({ stores, categories, transactions, orders, products, onSelect }: Data & { stores: Store[]; onSelect: (id: string) => void }) {
-  const results = useMemo(() => stores.map((store) => ({ store, result: calculateProfitability(store, categories, transactions, orders, products) })), [stores, categories, transactions, orders, products]);
+  const results = useMemo(() => stores.map((store) => ({ store, result: calculateProfitability(store, categories, transactions, orders, products, stores) })), [stores, categories, transactions, orders, products]);
   return <details className="group mt-4 rounded-xl border border-[#293a33] bg-[#10181b]">
     <summary className="flex cursor-pointer list-none items-center justify-between gap-2 p-3 text-xs font-medium text-[#c4d7cb]">Tüm mağazaların ROAS ve ürün kârı <ChevronDown size={14} className="transition group-open:rotate-180"/></summary>
     <div className="overflow-x-auto border-t border-[#26352d]"><table className="w-full min-w-[500px] text-left text-xs"><thead className="text-[#899f91]"><tr>{["Mağaza", "ROAS", "Satılan ürünlerin kârı"].map((h) => <th key={h} className="px-4 py-3 font-medium">{h}</th>)}</tr></thead><tbody>{results.map(({ store, result }) => <tr key={store.id} className="border-t border-[#25302a]"><td className="px-4 py-3"><button onClick={() => onSelect(store.id)} className="flex items-center gap-2 font-medium text-[#c1dfce] hover:text-white">{store.name}<ArrowUpRight size={12}/></button></td><td className="px-4 py-3">{ratio(result.roas)}</td><td className={`px-4 py-3 font-semibold ${result.profit === null ? "text-[#b6c3ba]" : result.profit >= 0 ? "text-[#79d5aa]" : "text-[#ef9c90]"}`}>{result.profit === null ? "Eksik bilgi" : reportMoney(result.profit, store.currency)}</td></tr>)}</tbody></table></div>

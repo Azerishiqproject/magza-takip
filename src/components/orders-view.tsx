@@ -43,6 +43,8 @@ type Props = {
   store: Store;
   orders: Order[];
   products: Product[];
+  costProducts?: Product[];
+  stores?: Store[];
   onProducts: () => void;
   onAdd: (order: NewOrder) => Promise<Order>;
   onStage: (id: string, stage: OrderStage, details?: Partial<Pick<Order, "responseNote" | "addressNote" | "shippingCost">>) => Promise<void>;
@@ -53,7 +55,7 @@ type Props = {
   onCancel: (id: string, chargeShipping: boolean, note: string) => Promise<void>;
 };
 
-export function OrdersView({ store, orders, products, onProducts, onAdd, onStage, onEdit, onUpdate, onDelete, onComplete, onCancel }: Props) {
+export function OrdersView({ store, orders, products, costProducts = products, stores = [store], onProducts, onAdd, onStage, onEdit, onUpdate, onDelete, onComplete, onCancel }: Props) {
   const [filter, setFilter] = useState<Filter>("active");
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
   const [customStart, setCustomStart] = useState(() => { const date = new Date(); date.setDate(date.getDate() - 30); return inputDate(date); });
@@ -136,7 +138,7 @@ export function OrdersView({ store, orders, products, onProducts, onAdd, onStage
       </div>
 
       <div className="grid gap-3">
-        {filtered.map((order) => <OrderCard key={order.id} order={order} store={store} products={products} submitting={submitting} onAdvance={(stage) => void advance(order, stage)} onEdit={() => { setSelectedId(order.id); setAction("edit"); }} onDelete={() => { setSelectedId(order.id); setAction("delete"); }} onCancel={() => { setSelectedId(order.id); setAction("cancel"); }}/>) }
+        {filtered.map((order) => <OrderCard key={order.id} order={order} store={store} products={costProducts} stores={stores} submitting={submitting} onAdvance={(stage) => void advance(order, stage)} onEdit={() => { setSelectedId(order.id); setAction("edit"); }} onDelete={() => { setSelectedId(order.id); setAction("delete"); }} onCancel={() => { setSelectedId(order.id); setAction("cancel"); }}/>) }
       </div>
       {!filtered.length && <div className="py-16 text-center"><PackageCheck className="mx-auto text-[#3f4a54]" size={28}/><p className="mt-3 text-[11px] font-semibold text-[#a0aab3]">Bu filtrelerde sipariş yok</p><p className="mt-1 text-[9px] text-[#66717c]">Durum, tarih veya arama filtresini değiştirebilirsiniz.</p></div>}
     </div>
@@ -158,9 +160,9 @@ function SummaryCard({ label, value, icon: Icon, color }: { label: string; value
   return <div className="panel flex items-center gap-3 rounded-2xl p-4"><span className="grid h-9 w-9 place-items-center rounded-xl" style={{ background: `${color}16`, color }}><Icon size={16}/></span><div><p className="text-[9px] text-[#707b85]">{label}</p><p className="mt-0.5 text-[18px] font-semibold">{value}</p></div></div>;
 }
 
-function OrderCard({ order, store, products, submitting, onAdvance, onCancel, onEdit, onDelete }: { order: Order; store: Store; products: Product[]; submitting: boolean; onAdvance: (stage: Exclude<OrderStage, "new">) => void; onCancel: () => void; onEdit: () => void; onDelete: () => void }) {
+function OrderCard({ order, store, products, stores, submitting, onAdvance, onCancel, onEdit, onDelete }: { order: Order; store: Store; products: Product[]; stores: Store[]; submitting: boolean; onAdvance: (stage: Exclude<OrderStage, "new">) => void; onCancel: () => void; onEdit: () => void; onDelete: () => void }) {
   const currentIndex = stageOrder.indexOf(order.stage);
-  const costs = calculateOrderProfitability(store, order, products);
+  const costs = calculateOrderProfitability(store, order, products, order.amount, `order:${order.id}`, stores);
   const progress = order.status === "cancelled" ? 0 : (currentIndex / (stageOrder.length - 1)) * 100;
   return <article className="rounded-2xl border border-[#27313a] bg-[#10161c] p-4">
     <div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-start gap-3"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#1a2828] text-[#6bd9cc]"><UserRound size={16}/></span><div className="min-w-0"><p className="truncate text-[11px] font-semibold">{order.customerName}</p><p className="mt-1 break-words text-[9px] leading-4 text-[#78838d]">{orderProductLabel(order)}</p><p className="mt-1.5 flex items-center gap-1 text-[7px] text-[#59656f]"><CalendarDays size={9}/>{new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short", year: "numeric" }).format(new Date(order.createdAt))}</p></div></div><div className="text-right"><p className="text-[12px] font-bold text-[#e7ecef]">{money(order.amount, store.currency)}</p><StatusBadge status={order.status}/></div></div>

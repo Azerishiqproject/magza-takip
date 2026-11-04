@@ -64,7 +64,7 @@ export function useFinanceData() {
     if (existing) return existing;
 
     const documentId = normalize(store.domain).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || crypto.randomUUID();
-    if (store.profitSettings) validateProfitSettings(store.profitSettings, documentId, categories, products);
+    if (store.profitSettings) validateProfitSettings(store.profitSettings, documentId, categories, products, stores);
     const local = { ...store, id: documentId };
     if (!isDemo) await setDoc(doc(db, "stores", documentId), store);
     setStores((current) => [...current.filter((item) => item.id !== local.id), local]);
@@ -104,7 +104,7 @@ export function useFinanceData() {
     const previous = stores.find((item) => item.id === id);
     if (!previous) throw new Error("Mağaza bulunamadı.");
     const store = { ...previous, ...changes };
-    if (changes.profitSettings) validateProfitSettings(changes.profitSettings, id, categories, products);
+    if (changes.profitSettings) validateProfitSettings(changes.profitSettings, id, categories, products, stores);
     store.name = store.name.trim(); store.domain = store.domain.trim();
     if (!store.name || !store.domain) throw new Error("Mağaza adı ve domaini girin.");
     validateFolder(store.folderId);

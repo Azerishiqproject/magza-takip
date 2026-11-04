@@ -14,11 +14,11 @@ export function orderShippingCost(store: Store, order: Order): number | null {
   return store.currency === "AZN" ? 4 : validMoney(order.shippingCost) ? order.shippingCost : null;
 }
 
-export function calculateOrderProfitability(store: Store, order: Order, products: Product[], revenue = order.amount, sourceKey = `order:${order.id}`) {
+export function calculateOrderProfitability(store: Store, order: Order, products: Product[], revenue = order.amount, sourceKey = `order:${order.id}`, stores: Store[] = [store]) {
   const productMap = new Map(products.filter((p) => p.storeId === store.id).map((p) => [p.id, p]));
   const mapping = store.profitSettings?.costMappings?.[sourceKey];
-  const mapped = mapping && !("excluded" in mapping) && validCostMapping(mapping, products, store.id) ? mapping : null;
-  const items = mapped ? mapped.items.map((item) => ({ ...item, product: productMap.get(item.productId)?.name ?? "Ürün" })) : getOrderItems(order);
+  const mapped = mapping && !("excluded" in mapping) && validCostMapping(mapping, products, store.id, stores) ? mapping : null;
+  const items = mapped ? mapped.items.map((item) => ({ ...item, product: "productId" in item ? productMap.get(item.productId)?.name ?? "Ürün" : `${stores.find((s) => s.id === item.sourceStoreId)?.name ?? "Mağaza"} ortak alış fiyatı` })) : getOrderItems(order);
   const missingProducts = new Set<string>();
   let purchase = 0, units = 0;
   let legacyResolved = false;
@@ -32,8 +32,9 @@ export function calculateOrderProfitability(store: Store, order: Order, products
     } else missingProducts.add(order.product || "Ürün/adet bağlantısı eksik");
   } else if (!Array.isArray(items) || !items.length) missingProducts.add(order.product || "Ürün bağlantısı eksik");
   else for (const item of items) {
-    const product = productMap.get(item.productId);
-    const cost = product?.purchasePrice;
+    const product = "productId" in item ? productMap.get(item.productId) : undefined;
+    const source = "sourceStoreId" in item ? stores.find((s) => s.id === item.sourceStoreId) : undefined;
+    const cost = source && source.currency === store.currency ? commonLegacyPurchasePrice(source, products) : product?.purchasePrice;
     if (!Number.isSafeInteger(item.quantity) || item.quantity <= 0 || !validMoney(cost)) {
       missingProducts.add(item.product || product?.name || "Ürün bilgisi eksik");
       continue;

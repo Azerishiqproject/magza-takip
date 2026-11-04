@@ -20,7 +20,8 @@ export interface ProfitSettings {
   costMappings?: Record<string, LegacyCostMapping>;
 }
 
-export type LegacyCostMapping = { items: OrderItemInput[]; packageCount: number } | { excluded: true };
+export type CostMappingItem = OrderItemInput | { sourceStoreId: string; quantity: number };
+export type LegacyCostMapping = { items: CostMappingItem[]; packageCount: number } | { excluded: true };
 
 export interface StoreFolder {
   id: string;
