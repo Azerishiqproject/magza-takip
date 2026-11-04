@@ -17,7 +17,10 @@ export interface ProfitSettings {
   averageSalePrice?: number;
   advertisingCategoryIds: string[];
   salesCategoryIds: string[];
+  costMappings?: Record<string, LegacyCostMapping>;
 }
+
+export type LegacyCostMapping = { items: OrderItemInput[]; packageCount: number } | { excluded: true };
 
 export interface StoreFolder {
   id: string;

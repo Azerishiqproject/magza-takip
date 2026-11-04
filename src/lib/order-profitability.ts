@@ -1,4 +1,5 @@
 import { getOrderItems } from "./order-items";
+import { commonLegacyPurchasePrice, legacyQuantity, validCostMapping } from "./legacy-sales";
 import type { Order, Product, Store } from "./types";
 
 export const moneyCents = (value: number) => Math.round((value + Number.EPSILON) * 100);
@@ -13,12 +14,23 @@ export function orderShippingCost(store: Store, order: Order): number | null {
   return store.currency === "AZN" ? 4 : validMoney(order.shippingCost) ? order.shippingCost : null;
 }
 
-export function calculateOrderProfitability(store: Store, order: Order, products: Product[], revenue = order.amount) {
+export function calculateOrderProfitability(store: Store, order: Order, products: Product[], revenue = order.amount, sourceKey = `order:${order.id}`) {
   const productMap = new Map(products.filter((p) => p.storeId === store.id).map((p) => [p.id, p]));
-  const items = getOrderItems(order);
+  const mapping = store.profitSettings?.costMappings?.[sourceKey];
+  const mapped = mapping && !("excluded" in mapping) && validCostMapping(mapping, products, store.id) ? mapping : null;
+  const items = mapped ? mapped.items.map((item) => ({ ...item, product: productMap.get(item.productId)?.name ?? "Ürün" })) : getOrderItems(order);
   const missingProducts = new Set<string>();
   let purchase = 0, units = 0;
-  if (order.storeId !== store.id || !Array.isArray(items) || !items.length) missingProducts.add(order.product || "Ürün bağlantısı eksik");
+  let legacyResolved = false;
+  const packageCount = mapped?.packageCount ?? 1;
+  if (order.storeId !== store.id || (mapping && !mapped)) missingProducts.add(order.product || "Ürün bağlantısı eksik");
+  else if (order.items === undefined && !order.productId && !mapped) {
+    const quantity = order.quantity ?? legacyQuantity(order.product, !sourceKey.startsWith("income:"));
+    const cost = commonLegacyPurchasePrice(store, products);
+    if (quantity !== null && Number.isSafeInteger(quantity) && quantity > 0 && validMoney(cost)) {
+      purchase = moneyCents(cost) * quantity; units = quantity; legacyResolved = true;
+    } else missingProducts.add(order.product || "Ürün/adet bağlantısı eksik");
+  } else if (!Array.isArray(items) || !items.length) missingProducts.add(order.product || "Ürün bağlantısı eksik");
   else for (const item of items) {
     const product = productMap.get(item.productId);
     const cost = product?.purchasePrice;
@@ -31,13 +43,15 @@ export function calculateOrderProfitability(store: Store, order: Order, products
   }
   if (!Number.isSafeInteger(purchase) || !Number.isSafeInteger(units)) missingProducts.add("Ürün adet veya maliyetini kontrol edin");
   const purchaseCost = missingProducts.size ? null : purchase / 100;
-  const shippingCost = orderShippingCost(store, order);
-  const packagingCost = store.currency === "AZN" ? 1 : 0;
+  const perPackageShipping = orderShippingCost(store, order);
+  const shippingCost = perPackageShipping === null ? null : perPackageShipping * packageCount;
+  const packagingCost = store.currency === "AZN" ? packageCount : 0;
   const total = purchaseCost === null || shippingCost === null ? null : purchase + moneyCents(shippingCost) + moneyCents(packagingCost);
   const totalCost = total === null || !Number.isSafeInteger(total) ? null : total / 100;
   const contribution = totalCost === null || !validMoney(revenue) ? null : (moneyCents(revenue) - moneyCents(totalCost)) / 100;
   return {
-    units: missingProducts.size ? null : units, purchaseCost, shippingCost, packagingCost, totalCost, contribution,
+    units: missingProducts.size ? null : units, packageCount, purchaseCost, shippingCost, packagingCost, totalCost, contribution,
+    legacyResolved: (legacyResolved || Boolean(mapped)) && totalCost !== null,
     breakEven: totalCost === null ? null : breakEvenRoas(revenue, totalCost),
     missingProducts: [...missingProducts], missingShipping: shippingCost === null,
   };

@@ -244,3 +244,87 @@ test("packaging does not add income, change advertising ROAS or modify orders an
   assert.equal(r.packagingCost, 1); assert.equal(r.profit, 15); assert.equal(r.breakEven, 1.6);
   assert.equal(JSON.stringify([o, records]), before);
 });
+
+const { legacyQuantity, legacyPackageCount } = load(resolve("src/lib/legacy-sales.ts"));
+const legacyOrder = (label, extra = {}) => order("legacy", [], { items: undefined, productId: null, quantity: undefined, product: label, ...extra });
+const singleProduct = [products[0]];
+
+test("legacy quantities accept explicit Azerbaijani labels and reject ambiguous names, sizes and mixed descriptions", () => {
+  for (const [label, quantity] of [["2 eded", 2], ["1eded", 1], ["1 ədəd yastıq", 1], ["4 adet", 4], ["2", 2]]) assert.equal(legacyQuantity(label), quantity);
+  for (const label of ["Mərdəkan", "3 dede", "2 xl dizlik", "3 Sifaris", "1 eded + 2 eded", "0 eded", "1.5 eded", "-2 eded", "9007199254740992 eded"]) assert.equal(legacyQuantity(label), null);
+  assert.equal(legacyPackageCount("3 Sifariş"), 3); assert.equal(legacyPackageCount("2 eded"), null);
+});
+
+test("legacy completed orders use explicit quantity and the store's single current product price without changing stock", () => {
+  const o = legacyOrder("2 eded"); const before = JSON.stringify([o, singleProduct]);
+  const r = calculate(store, categories, [sale("legacy", 72)], [o], singleProduct);
+  assert.equal(r.revenue, 72); assert.equal(r.purchaseCost, 14); assert.equal(r.productCost, 19); assert.equal(r.profit, 53); assert.equal(r.legacyResolvedCount, 1);
+  assert.equal(JSON.stringify([o, singleProduct]), before);
+  const changed = calculate(store, categories, [sale("legacy", 72)], [o], [{ ...products[0], purchasePrice: 8 }]);
+  assert.equal(changed.purchaseCost, 16); assert.equal(changed.profit, 51);
+});
+
+test("equal-cost size variants support legacy orders without guessing a SKU", () => {
+  const variants = [{ ...products[0], id: "xl2", purchasePrice: 10 }, { ...products[0], id: "xl3", purchasePrice: 10, active: false }];
+  const r = orderCost(store, legacyOrder("2 eded dizlik"), variants);
+  assert.equal(r.purchaseCost, 20); assert.equal(r.totalCost, 25); assert.equal(r.units, 2); assert.equal(r.legacyResolved, true);
+  for (const alternative of [{ ...variants[1], purchasePrice: 11 }, { ...variants[1], purchasePrice: undefined }]) assert.equal(orderCost(store, legacyOrder("2 eded"), [variants[0], alternative]).totalCost, null);
+});
+
+test("a broken explicit product link never falls back to an unrelated product with a known cost", () => {
+  const o = legacyOrder("2 eded", { productId: "deleted-product", quantity: 2 });
+  assert.equal(orderCost(store, o, singleProduct).totalCost, null);
+});
+
+test("manual legacy sales with explicit product quantities are costed once and remain separate from order counts", () => {
+  const manual = tx("manual", "sales", "income", 72, { title: "2 eded" });
+  const r = calculate(store, categories, [manual, manual, tx("ad", "ads", "expense", 10)], [], singleProduct);
+  assert.equal(r.revenue, 72); assert.equal(r.purchaseCost, 14); assert.equal(r.shippingCost, 4); assert.equal(r.packagingCost, 1); assert.equal(r.profit, 43);
+  assert.equal(r.manualIncomeCount, 1); assert.equal(r.linkedOrderCount, 0); assert.equal(r.soldUnits, 2); assert.equal(r.costComplete, true);
+});
+
+test("order counts and sale amounts cannot silently become product quantities or package counts", () => {
+  const r = calculate(store, categories, [tx("manual", "sales", "income", 100, { title: "2 Sifaris" })], [], singleProduct);
+  assert.equal(r.profit, null); assert.equal(r.unmatchedRecords, 1);
+  assert.equal(r.costIssues[0].suggestedQuantity, 2); assert.equal(r.costIssues[0].suggestedPackages, 2);
+  assert.equal(orderCost(store, legacyOrder("Mərdəkan", { amount: 72 }), singleProduct).totalCost, null);
+});
+
+test("user-confirmed legacy mappings distinguish a multi-product package from separate historical orders", () => {
+  const mapped = { ...store, profitSettings: { ...settings, costMappings: {
+    "order:legacy": { items: [{ productId: "main", quantity: 2 }], packageCount: 1 },
+    "income:manual": { items: [{ productId: "main", quantity: 3 }], packageCount: 3 },
+  } } };
+  const r = calculate(mapped, categories, [sale("legacy", 72), tx("manual", "sales", "income", 82, { title: "3 Sifaris" })], [legacyOrder("Mərdəkan")], singleProduct);
+  assert.equal(r.revenue, 154); assert.equal(r.purchaseCost, 35); assert.equal(r.shippingCost, 16); assert.equal(r.packagingCost, 4); assert.equal(r.profit, 99);
+  assert.equal(r.orderCount, 4); assert.equal(r.soldUnits, 5); assert.equal(r.costIssues.length, 0); assert.equal(r.costReview.length, 2);
+});
+
+test("explicit transfer exclusions affect only ROAS and remain visible and reversible", () => {
+  const records = [tx("manual", "sales", "income", 45, { title: "1 eded" }), tx("transfer", "sales", "income", 12, { title: "Mehsul transferi" }), tx("ad", "ads", "expense", 10)];
+  const before = JSON.stringify(records);
+  const mapped = { ...store, profitSettings: { ...settings, costMappings: { "income:transfer": { excluded: true } } } };
+  const r = calculate(mapped, categories, records, [], singleProduct);
+  assert.equal(r.revenue, 45); assert.equal(r.roas, 4.5); assert.equal(r.excludedRevenue, 12); assert.equal(r.excludedRecords, 1); assert.equal(r.profit, 23);
+  assert.equal(r.costReview[0].sourceKey, "income:transfer"); assert.equal(JSON.stringify(records), before);
+  const restored = calculate(store, categories, records, [], singleProduct);
+  assert.equal(restored.revenue, 57); assert.equal(restored.excludedRecords, 0); assert.equal(restored.profit, null);
+});
+
+test("legacy cost mappings validate store ownership, package counts and explicit exclusions", () => {
+  const good = { ...settings, costMappings: { "income:manual": { items: [{ productId: "main", quantity: 3 }], packageCount: 3 }, "income:transfer": { excluded: true } } };
+  assert.doesNotThrow(() => validateProfitSettings(good, "s1", categories, singleProduct));
+  for (const entry of [
+    { "income:manual": { items: [{ productId: "foreign", quantity: 1 }], packageCount: 1 } },
+    { "income:manual": { items: [{ productId: "main", quantity: 1 }], packageCount: 2 } },
+    { "income:manual": { items: [{ productId: "main", quantity: -1 }], packageCount: 1 } },
+    { "income:manual": { items: [], packageCount: 1 } },
+    { "order:legacy": { items: [{ productId: "main", quantity: 2 }], packageCount: 2 } },
+    { "order:legacy": { excluded: true } }, { "invalid": { excluded: true } },
+  ]) assert.throws(() => validateProfitSettings({ ...settings, costMappings: entry }, "s1", categories, singleProduct));
+});
+
+test("bare numbers on manual income may be invoice IDs and are never inferred as units", () => {
+  const r = calculate(store, categories, [tx("invoice", "sales", "income", 72, { title: "2026" })], [], singleProduct);
+  assert.equal(r.costComplete, false); assert.equal(r.profit, null); assert.equal(r.unmatchedRecords, 1);
+});

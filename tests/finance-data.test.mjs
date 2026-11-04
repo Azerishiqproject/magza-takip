@@ -613,3 +613,17 @@ test("new non-AZN orders do not receive a converted 4-unit shipping charge", asy
   const order = await app.online({ stores: [{ ...baseStore, currency: "USD" }], products: [baseProduct], orders: [] }).addOrder({ storeId: "s1", customerName: "Demo", productId: "p1", quantity: 1, amount: 50 });
   assert.equal(order.shippingCost, 0);
 });
+
+test("legacy ROAS mappings persist only on store settings and do not touch inventory, orders or ledger", async () => {
+  const app = harness();
+  const categories = [{ id: "sales", storeId: "s1", type: "income", name: "Satış" }, { id: "ads", storeId: "s1", type: "expense", name: "Reklam" }];
+  const data = app.online({ categories, products: [baseProduct] });
+  const previous = JSON.stringify([data.orders, data.transactions, data.products]);
+  const profitSettings = { advertisingCategoryIds: ["ads"], salesCategoryIds: ["sales"], costMappings: { "income:manual": { items: [{ productId: "p1", quantity: 2 }], packageCount: 2 }, "income:transfer": { excluded: true } } };
+  await data.updateStore("s1", { profitSettings });
+  assert.deepEqual(app.cloud.get("stores/s1").profitSettings.costMappings, profitSettings.costMappings);
+  const result = app.render(); assert.equal(JSON.stringify([result.orders, result.transactions, result.products]), previous);
+  assert.ok([...app.cloud.keys()].every(path => path.startsWith("stores/") || !app.commits.flat().some(op => op.reference.path === path)));
+  await assert.rejects(result.updateStore("s1", { profitSettings: { ...profitSettings, costMappings: { "income:manual": { items: [{ productId: "not-ours", quantity: 2 }], packageCount: 1 } } } }), /bu mağazadan ürün/);
+  assert.deepEqual(app.cloud.get("stores/s1").profitSettings.costMappings, profitSettings.costMappings);
+});

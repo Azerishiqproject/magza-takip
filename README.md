@@ -56,7 +56,7 @@ Firebase değişkenleri `.env.local` içinde tanımlıdır. Firebase Console üz
 
 Kullanılan koleksiyonlar:
 
-- `stores`: `name`, `domain`, `currency`, `status`, `color`, isteğe bağlı `folderId`
+- `stores`: `name`, `domain`, `currency`, `status`, `color`, isteğe bağlı `folderId` ve `profitSettings`
 - `storeFolders`: `name`
 - `categories`: `storeId`, `name`, `type`, `color`
 - `transactions`: `storeId`, `categoryId`, `type`, `title`, `amount`, `date`, `note`
@@ -106,7 +106,10 @@ Ana sayfadaki **ROAS ve ürün kârı** düğmesi ayrı bir pencere açar. Ayarl
 - **ROAS = seçili satış geliri / seçili reklam gideri**. Reklam gideri yoksa oran gösterilmez.
 - **Ürün kârı = gelir − satılan ürünlerin alış maliyeti − sipariş kargosu − paket − reklam**. Stok alımları, domain, toplu paket alımları, iptal kargoları ve diğer giderler bu bölüme eklenmez. Ayrı kargo gider kayıtları ikinci kez düşülmez.
 - **Sipariş başa baş ROAS = sipariş geliri / (sipariş geliri − alış maliyeti − kargo − paket)**. Toplam başa baş ROAS da toplam gelir ve toplam katkıyla hesaplanır; sipariş oranlarının aritmetik ortalaması değildir. Katkı sıfır veya negatifse sonlu bir eşik gösterilmez.
-- Alış fiyatı, ürün/adet bağlantısı veya gerekli kargo bilgisi eksikse ya da gelir tamamlanmış bir siparişe bağlı değilse ROAS hesaplanabilir; kâr ve başa baş ROAS eksikler tamamlanana kadar gösterilmez. Eksik kayıtlar pencerede belirtilir.
+- Ürün bağlantısı olmayan eski siparişlerde açık adet bilgisi (`2 eded`, `1ədəd yastıq`, `2` gibi) okunur. Mağazada tek ürün varsa veya tüm ürün/bedenlerin stok alış fiyatı aynıysa bu güncel fiyat kullanılır; eski kayda rastgele bir beden atanmaz ve stok değiştirilmez. Farklı alış fiyatları varsa ürün eşleştirmesi gerekir. Ürün kimliği olan fakat ürünü silinmiş kayıtlar bu otomatik eşleştirmeye alınmaz.
+- Sipariş bağlantısı olmadan kaydedilmiş manuel satışlarda da açık ürün adedi ve aynı fiyat koşulu kullanılır. `2 eded` tek paket içindeki iki ürün sayılır. `2 Sifaris` gibi kayıtlar yalnızca sipariş sayısı belirttiği için ürün adedi ve gönderilen paket sayısı kullanıcı tarafından onaylanır. Ürün adedi satış tutarından tahmin edilmez.
+- **Eski kayıt eşleştirmeleri** bölümünde ürün/adet ve ayrı paket sayısı kaydedilebilir. Transfer gibi satış olmayan manuel gelirler yalnızca ROAS hesabından çıkarılabilir. Bu seçimler mağazanın `profitSettings.costMappings` alanında ürün kimliği, adet ve paket sayısı veya hariç tutma tercihi olarak tutulur; alış fiyatı kopyalanmaz. Sipariş, ürün stokları ve finans kayıtları değiştirilmez. Kaydedilen eşleştirmeler aynı bölümden düzenlenebilir veya kaldırılabilir.
+- Alış fiyatı, ürün/adet bağlantısı veya gerekli kargo bilgisi eksikse ROAS hesaplanabilir; kâr ve başa baş ROAS eksikler tamamlanana kadar gösterilmez. Eksik kayıtlar pencerede belirtilir.
 
 Pencerede seçili tarih aralığı, ROAS, başa baş eşiği, ürün kârı ve maliyetlerin dökümü bulunur. **Sipariş bazında maliyet ve başa baş ROAS** bölümü her siparişin gelirini, ürün maliyetini, kargosunu, paket giderini ve reklam öncesi katkısını gösterir. Reklam yalnızca dönem toplamından düşülür. Sipariş kartlarında da kargo ve paket dahil maliyet ve başa baş ROAS bulunur.
 
