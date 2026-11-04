@@ -1,5 +1,6 @@
 import { validReportDate } from "./store-analytics";
-import type { Category, ProfitSettings, Store, Transaction } from "./types";
+import { getOrderItems } from "./order-items";
+import type { Category, Order, ProfitSettings, Store, Transaction } from "./types";
 
 const cents = (value: number) => Math.round((value + Number.EPSILON) * 100);
 const validCost = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0 && Number.isSafeInteger(cents(value));
@@ -30,9 +31,21 @@ export function breakEvenRoas(salePrice: number, cost: number): number | null {
 
 export type Profitability = ReturnType<typeof calculateProfitability>;
 
-// Only selected income categories supply revenue. Order counts, quantities and
-// product prices never participate in this store-level average-cost model.
-export function calculateProfitability(store: Store, categories: Category[], transactions: Transaction[]) {
+function shippingUnits(order: Order): number | null {
+  const items = getOrderItems(order);
+  if (items.length) {
+    if (items.some((item) => !Number.isSafeInteger(item.quantity) || item.quantity <= 0)) return null;
+    const quantity = items.reduce((sum, item) => sum + item.quantity, 0);
+    return Number.isSafeInteger(quantity) ? quantity : null;
+  }
+  // Older records may have an explicit quantity without a product link. Never
+  // infer units from revenue or free-text product/customer descriptions.
+  return order.items === undefined && Number.isSafeInteger(order.quantity) && order.quantity! > 0 ? order.quantity! : null;
+}
+
+// Selected income records remain the only revenue source. Quantities are used
+// solely to remove repeated shipping from a completed multi-unit package.
+export function calculateProfitability(store: Store, categories: Category[], transactions: Transaction[], orders: Order[] = []) {
   const settings = store.profitSettings;
   const roles = settings ?? suggestedProfitCategories(store.id, categories);
   const categoryMap = new Map(categories.filter((c) => c.storeId === store.id).map((c) => [c.id, c]));
@@ -40,8 +53,11 @@ export function calculateProfitability(store: Store, categories: Category[], tra
   // category when that category becomes available. Explicit selections are kept.
   const salesIds = (roles.salesCategoryIds.length ? roles.salesCategoryIds : suggestedProfitCategories(store.id, categories).salesCategoryIds).filter((id) => categoryMap.get(id)?.type === "income");
   const advertisingIds = roles.advertisingCategoryIds.filter((id) => categoryMap.get(id)?.type === "expense");
+  const orderMap = new Map(orders.filter((order) => order.storeId === store.id && order.status === "completed").map((order) => [order.id, order]));
+  const configured = Boolean(settings && validMoney(settings.averageUnitCost) && validMoney(settings.averageSalePrice) && settings.averageSalePrice >= 0.01);
   const records = [...new Map(transactions.filter((t) => t.storeId === store.id && validReportDate(t.date) && validCost(t.amount) && t.amount > 0 && ["income", "expense"].includes(t.type)).map((t) => [t.id, t])).values()];
   let revenue = 0, adSpend = 0, saleRecords = 0;
+  let shippingSavings = 0, bundleOrders = 0, extraBundleUnits = 0;
   for (const record of records) {
     const amount = cents(record.amount);
     const category = categoryMap.get(record.categoryId);
@@ -49,14 +65,30 @@ export function calculateProfitability(store: Store, categories: Category[], tra
       adSpend += amount;
     } else if (record.type === "income" && category?.type === "income" && salesIds.includes(record.categoryId)) {
       revenue += amount; saleRecords++;
+      // Anchor the correction to the order's single generated income record so
+      // additional manual receipts cannot claim this saving a second time.
+      const order = record.orderId ? orderMap.get(record.orderId) : undefined;
+      if (configured && store.currency === "AZN" && order && record.id === `order-income-${order.id}`) {
+        const quantity = shippingUnits(order);
+        if (quantity !== null && quantity > 1 && Number.isSafeInteger((quantity - 1) * 400)) {
+          const orderCost = Math.round(amount * cents(settings!.averageUnitCost) / cents(settings!.averageSalePrice));
+          // Discounts or incorrect historical quantities must never make this
+          // order's estimated cost negative or eat into another order's cost.
+          const saving = Math.min((quantity - 1) * 400, orderCost);
+          shippingSavings += saving; bundleOrders++; extraBundleUnits += quantity - 1;
+        }
+      }
     }
   }
-  const configured = Boolean(settings && validMoney(settings.averageUnitCost) && validMoney(settings.averageSalePrice) && settings.averageSalePrice >= 0.01);
   // Round once after applying the cost ratio to the entire income total.
-  const productCost = configured ? Math.round(revenue * cents(settings!.averageUnitCost) / cents(settings!.averageSalePrice)) : null;
+  const baseProductCost = configured ? Math.round(revenue * cents(settings!.averageUnitCost) / cents(settings!.averageSalePrice)) : null;
+  const appliedSavings = baseProductCost === null ? 0 : Math.min(shippingSavings, baseProductCost);
+  const productCost = baseProductCost === null ? null : baseProductCost - appliedSavings;
   const contribution = productCost === null ? null : revenue - productCost;
   return {
     revenue: revenue / 100, adSpend: adSpend / 100, productCost: productCost === null ? null : productCost / 100,
+    baseProductCost: baseProductCost === null ? null : baseProductCost / 100,
+    shippingSavings: appliedSavings / 100, bundleOrders, extraBundleUnits,
     profit: contribution === null ? null : (contribution - adSpend) / 100,
     roas: adSpend > 0 ? revenue / adSpend : null,
     breakEven: advertisingIds.length > 0 && contribution !== null && revenue > 0 && contribution > 0 ? revenue / contribution : null,

@@ -97,8 +97,9 @@ Finans raporu teslim edilen siparişlerin finans kayıtlarını ve manuel gelir/
 
 Ana sayfadaki **ROAS ve ürün kârı** düğmesi ayrı bir pencere açar. Pencere kapatılabilir; sayfa açılışında otomatik gösterilmez. Ayarı olmayan mağaza için ilk açılışta kargo dahil ürün maliyeti, ortalama satış fiyatı ve reklam gideri kategorileri sorulur. Her mağazanın ayarı ayrı kaydedilir.
 
-- Gelir kaynağı varsayılan olarak **Sipariş gelirleri** kategorisidir; ayarlardan gelir kategorileri seçilebilir. Sipariş adedi, ürün adedi ve ürün kayıtlarındaki fiyatlar bu hesapta kullanılmaz.
-- Maliyet payı = seçili gelir kategorilerinin toplamı × (girilen kargo dahil ürün maliyeti / girilen ortalama satış fiyatı). Yuvarlama toplam tutarda yapılır.
+- Gelir kaynağı varsayılan olarak **Sipariş gelirleri** kategorisidir; ayarlardan gelir kategorileri seçilebilir. Gelir ve baz maliyet oranı kategori kayıtlarından hesaplanır; siparişler tekrar gelir olarak eklenmez. Ürün adedi yalnızca paket kargo düzeltmesinde kullanılır.
+- Baz maliyet payı = seçili gelir kategorilerinin toplamı × (girilen kargo dahil ürün maliyeti / girilen ortalama satış fiyatı). Yuvarlama toplam tutarda yapılır.
+- AZN mağazalarında, seçili döneme dahil otomatik sipariş geliriyle eşleşen tamamlanmış paketlerde ilk üründen sonraki her ürün için **4 AZN** kargo payı baz maliyetten düşülür: 2 ürün → 4 AZN, 3 ürün → 8 AZN. Aynı üründen alınan adetler ve farklı ürün satırları birlikte sayılır. Adedi olmayan eski/manuel kayıtlar için düzeltme tahmin edilmez. Düzeltme ilgili siparişin tahmini maliyetini aşmaz; farklı para birimlerinde 4 AZN dönüşümsüz uygulanmaz.
 - ROAS = seçili satış geliri / kullanıcının seçtiği reklam kategorilerinin gider toplamı. Reklam gideri yoksa oran hesaplanmaz.
 - Satılan ürünlerin kârı = satış geliri − maliyet payı − seçili reklam gideri. Diğer giderler, stok alımları, ayrı kargo kayıtları ve diğer gelirler bu hesaplamaya dahil edilmez.
 - Başa baş ROAS = satış geliri / (satış geliri − maliyet payı). Katkı pozitif değilse sonlu bir başa baş oranı gösterilmez.

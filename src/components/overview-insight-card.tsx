@@ -6,18 +6,18 @@ import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { buildExpenseBreakdown } from "@/lib/expense-breakdown";
 import { calculateProfitability } from "@/lib/profitability";
 import { reportMoney } from "@/lib/store-analytics";
-import type { Category, Store, Transaction } from "@/lib/types";
+import type { Category, Order, Store, Transaction } from "@/lib/types";
 import { RoasGauge } from "./profitability-panel";
 
-type Props = { store: Store; categories: Category[]; transactions: Transaction[]; onOpenRoas: () => void };
+type Props = { store: Store; categories: Category[]; transactions: Transaction[]; orders: Order[]; onOpenRoas: () => void };
 const ratio = (value: number | null) => value === null ? "—" : `${value.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x`;
 const percent = (value: number) => `%${value.toLocaleString("tr-TR", { maximumFractionDigits: 1 })}`;
 
-export function OverviewInsightCard({ store, categories, transactions, onOpenRoas }: Props) {
+export function OverviewInsightCard({ store, categories, transactions, orders, onOpenRoas }: Props) {
   const [view, setView] = useState<"expenses" | "roas">("expenses");
   const [showAll, setShowAll] = useState(false);
   const expenses = useMemo(() => buildExpenseBreakdown(store.id, categories, transactions), [store.id, categories, transactions]);
-  const roas = useMemo(() => calculateProfitability(store, categories, transactions), [store, categories, transactions]);
+  const roas = useMemo(() => calculateProfitability(store, categories, transactions, orders), [store, categories, transactions, orders]);
   const amount = (value: number) => reportMoney(value, store.currency);
   const listed = showAll ? expenses.items : expenses.items.slice(0, 4);
   return <section aria-label="Gider dağılımı ve ROAS özeti" className="panel flex min-w-0 flex-col rounded-2xl p-4 md:p-5">
@@ -48,6 +48,7 @@ export function OverviewInsightCard({ store, categories, transactions, onOpenRoa
         <div className="mt-5 flex items-start justify-between gap-2"><div><p className="text-[11px] text-[#91a69a]">Mevcut ROAS</p><p className="mt-1.5 text-[32px] font-semibold tracking-tight text-[#8ae0bb]">{ratio(roas.roas)}</p></div><span className={`mt-1 rounded-lg px-2 py-1 text-[10px] font-medium ${roas.profit !== null && roas.profit >= 0 ? "bg-[#18372a] text-[#8ed5ad]" : "bg-[#3a2920] text-[#efb383]"}`}>{roas.revenue === 0 ? "Henüz satış yok" : roas.profit !== null && roas.profit >= 0 ? "Kâr bölgesi" : "Zarar bölgesi"}</span></div>
         <div className="mt-3 grid grid-cols-2 gap-2"><div className="rounded-xl border border-[#343d30] bg-[#1c2118] p-3"><p className="text-[10px] text-[#a7b19c]">Başa baş ROAS</p><p className="mt-1.5 text-[17px] font-semibold text-[#e3be80]">{ratio(roas.breakEven)}</p></div><div className="rounded-xl border border-[#2a4034] bg-[#111f18] p-3"><p className="text-[10px] text-[#9eb4a5]">Ürün kârı</p><p className={`mt-1.5 break-words text-[15px] font-semibold ${roas.profit !== null && roas.profit < 0 ? "text-[#f5a092]" : "text-[#8bdaad]"}`}>{roas.profit === null ? "—" : amount(roas.profit)}</p></div></div>
         <RoasGauge result={roas} compact/>
+        {roas.shippingSavings > 0 && <p className="mt-2 text-[10px] leading-5 text-[#98d7b4]">Paket kargo avantajı: {amount(roas.shippingSavings)} maliyetten düşüldü.</p>}
         <p className="mt-3 text-[10px] leading-5 text-[#8ea495]">Sipariş geliri − kargo dahil maliyet payı − seçili reklam harcaması.</p>
         {(roas.noAdvertisingCategory || roas.noSalesCategory) && <p className="mt-2 text-[11px] leading-5 text-[#d9b47c]">Hesabı tamamlamak için gelir ve reklam kategorilerini kontrol edin.</p>}
       </> : <div className="flex min-h-64 flex-1 flex-col items-center justify-center px-2 text-center"><span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#18362a] text-[#9cdbb8]"><Target size={24}/></span><h3 className="mt-4 text-sm font-semibold text-[#d0dfd4]">ROAS hesabını başlatın</h3><p className="mt-2 text-xs leading-6 text-[#91a69a]">Bu mağaza için ortalama satış fiyatını, kargo dahil maliyeti ve reklam kategorisini seçin.</p></div>}

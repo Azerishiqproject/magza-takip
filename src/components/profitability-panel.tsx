@@ -5,18 +5,18 @@ import { ArrowUpRight, ChevronDown, Settings2, Target, TrendingUp } from "lucide
 import { toast } from "sonner";
 import { breakEvenRoas, calculateProfitability, suggestedProfitCategories, type Profitability } from "@/lib/profitability";
 import { reportMoney } from "@/lib/store-analytics";
-import type { Category, ProfitSettings, Store, Transaction } from "@/lib/types";
+import type { Category, Order, ProfitSettings, Store, Transaction } from "@/lib/types";
 import { Field, Modal } from "./modal";
 
 const ratio = (value: number | null) => value === null ? "—" : `${value.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x`;
-type Data = { categories: Category[]; transactions: Transaction[] };
+type Data = { categories: Category[]; transactions: Transaction[]; orders: Order[] };
 type SettingsProps = { store: Store; categories: Category[]; onSave: (settings: ProfitSettings) => Promise<{ persisted: boolean }>; onDone: () => void };
 type Props = Data & Omit<SettingsProps, "onDone"> & { stores: Store[]; periodTransactions: Transaction[]; onSelect: (id: string) => void; open: boolean; onOpenChange: (open: boolean) => void };
 
-export function ProfitabilityPanel({ store, stores, categories, transactions, periodTransactions, onSelect, onSave, open, onOpenChange: setOpen }: Props) {
+export function ProfitabilityPanel({ store, stores, categories, transactions, orders, periodTransactions, onSelect, onSave, open, onOpenChange: setOpen }: Props) {
   const [editing, setEditing] = useState(false);
   const launcher = useRef<HTMLButtonElement>(null);
-  const result = useMemo(() => calculateProfitability(store, categories, transactions), [store, categories, transactions]);
+  const result = useMemo(() => calculateProfitability(store, categories, transactions, orders), [store, categories, transactions, orders]);
   useEffect(() => {
     if (!open) return;
     const escape = (event: KeyboardEvent) => {
@@ -48,8 +48,9 @@ export function ProfitabilityPanel({ store, stores, categories, transactions, pe
         <dl className="mt-4 grid gap-3 rounded-xl border border-[#293a31] bg-[#101b16] p-4 text-xs sm:grid-cols-3">
           {[["Sipariş geliri", amount(result.revenue)], ["Kargo dahil maliyet payı", amount(result.productCost)], ["Seçili reklam harcaması", amount(result.adSpend)]].map(([label, value]) => <div key={label}><dt className="text-[#8eaa99]">{label}</dt><dd className="mt-2 text-sm font-semibold text-[#d5e1da]">{value}</dd></div>)}
         </dl>
-        <p className="mt-3 text-[11px] leading-5 text-[#8eaa99]">Maliyet payı, sipariş gelirine girdiğiniz maliyet / ortalama satış fiyatı oranı uygulanarak tahmin edilir. ROAS, bu gelirin seçili reklam harcamasına oranıdır.</p>
-        <StoreProfitabilityTable stores={stores} categories={categories} transactions={periodTransactions} onSelect={(id) => { setEditing(false); onSelect(id); }}/>
+        {result.shippingSavings > 0 && <div className="mt-3 rounded-xl border border-[#2b543e] bg-[#12251a] p-3 text-xs leading-6 text-[#a6dcbc]">Paket kargo düzeltmesi: <strong>{amount(result.shippingSavings)}</strong> maliyetten düşüldü. {result.bundleOrders} paket siparişteki {result.extraBundleUnits} ek ürün için kargo tekrar sayılmadı.</div>}
+        <p className="mt-3 text-[11px] leading-5 text-[#8eaa99]">Maliyet payı, sipariş gelirine girdiğiniz maliyet / ortalama satış fiyatı oranı uygulanarak tahmin edilir. AZN mağazalarında adedi kayıtlı, tamamlanan paket siparişlerde ilk üründen sonraki her ürün için 4 AZN kargo payı maliyetten düşülür. Düzeltme ilgili siparişin hesaplanan maliyetini aşmaz. ROAS, bu gelirin seçili reklam harcamasına oranıdır.</p>
+        <StoreProfitabilityTable orders={orders} stores={stores} categories={categories} transactions={periodTransactions} onSelect={(id) => { setEditing(false); onSelect(id); }}/>
       </section>}
     </Modal>
   </>;
@@ -94,10 +95,10 @@ function ProfitSettingsForm({ store, categories, onSave, onDone }: SettingsProps
   }}>
     <Field label={`Ortalama satış fiyatı (${store.currency})`}><input autoFocus required disabled={submitting} type="number" min="0.01" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} className="input"/></Field>
     <Field label={`Kargo dahil ürün maliyeti (${store.currency})`}><input required disabled={submitting} type="number" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} className="input"/></Field>
-    <div className="rounded-xl bg-[#17251f] p-3 text-xs leading-6 text-[#a6d7c3]">Başa baş ROAS: <strong>{ratio(threshold)}</strong><p className="text-[#93a59e]">{threshold === null && price && cost ? "Satış fiyatı, kargo dahil ürün maliyetinden yüksek olmalı." : "Satış fiyatı ÷ (satış fiyatı − kargo dahil ürün maliyeti)."}</p></div>
+    <div className="rounded-xl bg-[#17251f] p-3 text-xs leading-6 text-[#a6d7c3]">Tek ürün için başa baş ROAS: <strong>{ratio(threshold)}</strong><p className="text-[#93a59e]">{threshold === null && price && cost ? "Satış fiyatı, kargo dahil ürün maliyetinden yüksek olmalı." : "Satış fiyatı ÷ (satış fiyatı − kargo dahil ürün maliyeti)."}</p></div>
     <ProfitCategoryChoices field="advertisingCategoryIds" label="Reklam gideri kategorileri" hint="Reklam harcaması olarak kullanılacak kategorileri seçin." type="expense" store={store} categories={categories} selected={roles.advertisingCategoryIds} disabled={submitting}/>
     <details className="rounded-xl border border-[#2d3933] p-3"><summary className="cursor-pointer text-xs font-medium text-[#bfcec5]">Satış geliri kaynağı</summary><div className="mt-3"><ProfitCategoryChoices field="salesCategoryIds" label="Satış geliri kategorileri" hint="Varsayılan kaynak Sipariş gelirleri kategorisidir." type="income" store={store} categories={categories} selected={roles.salesCategoryIds} disabled={submitting}/></div></details>
-    <p className="text-[11px] leading-5 text-[#899b91]">Maliyet payı = Sipariş gelirleri × (kargo dahil ürün maliyeti ÷ ortalama satış fiyatı). Bu değerleri değiştirdiğinizde geçmiş dönem tahminleri de güncellenir.</p>
+    <p className="text-[11px] leading-5 text-[#899b91]">Baz maliyet payı = Sipariş gelirleri × (kargo dahil ürün maliyeti ÷ ortalama satış fiyatı). AZN mağazalarında paket kargo düzeltmesi bu tutardan düşülür. Bu değerleri değiştirdiğinizde geçmiş dönem tahminleri de güncellenir.</p>
     <button disabled={submitting} className="w-full rounded-xl bg-[#2dd4bf] py-3 text-xs font-bold text-[#07110f] disabled:opacity-50">{submitting ? "Kaydediliyor…" : "Kaydet ve hesapla"}</button>
   </form>;
 }
@@ -113,8 +114,8 @@ function ProfitCategoryChoices({ field, label, hint, type, store, categories, se
   </fieldset>;
 }
 
-function StoreProfitabilityTable({ stores, categories, transactions, onSelect }: Data & { stores: Store[]; onSelect: (id: string) => void }) {
-  const results = useMemo(() => stores.map((store) => ({ store, result: calculateProfitability(store, categories, transactions) })), [stores, categories, transactions]);
+function StoreProfitabilityTable({ stores, categories, transactions, orders, onSelect }: Data & { stores: Store[]; onSelect: (id: string) => void }) {
+  const results = useMemo(() => stores.map((store) => ({ store, result: calculateProfitability(store, categories, transactions, orders) })), [stores, categories, transactions, orders]);
   return <details className="group mt-4 rounded-xl border border-[#293a33] bg-[#10181b]">
     <summary className="flex cursor-pointer list-none items-center justify-between gap-2 p-3 text-xs font-medium text-[#c4d7cb]">Tüm mağazaların ROAS ve ürün kârı <ChevronDown size={14} className="transition group-open:rotate-180"/></summary>
     <div className="overflow-x-auto border-t border-[#26352d]"><table className="w-full min-w-[500px] text-left text-xs"><thead className="text-[#899f91]"><tr>{["Mağaza", "ROAS", "Satılan ürünlerin kârı"].map((h) => <th key={h} className="px-4 py-3 font-medium">{h}</th>)}</tr></thead><tbody>{results.map(({ store, result }) => <tr key={store.id} className="border-t border-[#25302a]"><td className="px-4 py-3"><button onClick={() => onSelect(store.id)} className="flex items-center gap-2 font-medium text-[#c1dfce] hover:text-white">{store.name}<ArrowUpRight size={12}/></button></td><td className="px-4 py-3">{ratio(result.roas)}</td><td className={`px-4 py-3 font-semibold ${result.profit === null ? "text-[#b6c3ba]" : result.profit >= 0 ? "text-[#79d5aa]" : "text-[#ef9c90]"}`}>{result.profit === null ? "Ayar gerekli" : reportMoney(result.profit, store.currency)}</td></tr>)}</tbody></table></div>

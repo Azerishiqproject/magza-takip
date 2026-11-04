@@ -146,3 +146,103 @@ test("only the user's selected advertising IDs determine ad spend, regardless of
   const r = calculate(store, cats, records);
   assert.equal(r.adSpend, 100); assert.equal(r.profit, 230); assert.equal(r.roas, 4.5);
 });
+
+const bundle = (id, quantities = [1, 1], extra = {}) => ({
+  id, storeId: "s1", status: "completed", customerName: "Demo", product: "Paket", amount: 90, stage: "delivered",
+  createdAt: "2026-10-01T10:00:00Z", completedAt: "2026-10-02T10:00:00Z", updatedAt: "2026-10-02T10:00:00Z",
+  items: quantities.map((quantity, i) => ({ productId: `p${i}`, product: `Ürün ${i}`, quantity, unitPrice: 45 })), ...extra,
+});
+const bundleSale = (id, amount = 90, extra = {}) => tx(`order-income-${id}`, "sales", "income", amount, { orderId: id, ...extra });
+
+test("two units share one shipping fee: deduct 4 AZN from estimated cost, not revenue or ad spend", () => {
+  const r = calculate(store, categories, [bundleSale("o1"), tx("ad", "ads", "expense", 20)], [bundle("o1")]);
+  assert.equal(r.revenue, 90); assert.equal(r.baseProductCost, 24); assert.equal(r.shippingSavings, 4); assert.equal(r.productCost, 20);
+  assert.equal(r.profit, 50); assert.equal(r.adSpend, 20); assert.equal(r.roas, 4.5); assert.equal(r.breakEven, 90 / 70);
+  assert.equal(r.bundleOrders, 1); assert.equal(r.extraBundleUnits, 1);
+});
+
+test("three units of the same product save 8 AZN; mixed lines use unit quantities rather than row count", () => {
+  for (const quantities of [[3], [2, 1], [1, 1, 1]]) {
+    const r = calculate(store, categories, [bundleSale("o1", 135)], [bundle("o1", quantities, { quantity: 999 })]);
+    assert.equal(r.baseProductCost, 36); assert.equal(r.shippingSavings, 8); assert.equal(r.productCost, 28); assert.equal(r.profit, 107);
+    assert.equal(r.extraBundleUnits, 2);
+  }
+});
+
+test("single-unit orders and unrelated manual income do not receive bundle credits", () => {
+  const r = calculate(store, categories, [bundleSale("single", 45), tx("manual", "sales", "income", 90)], [bundle("single", [1])]);
+  assert.equal(r.shippingSavings, 0); assert.equal(r.bundleOrders, 0); assert.equal(r.productCost, 36);
+});
+
+test("active and cancelled orders never receive shipping savings", () => {
+  for (const status of ["active", "cancelled"]) {
+    const r = calculate(store, categories, [bundleSale("o1")], [bundle("o1", [2], { status })]);
+    assert.equal(r.shippingSavings, 0); assert.equal(r.productCost, 24);
+  }
+});
+
+test("bundle adjustment follows the selected finance period, not the order creation/completion date", () => {
+  const order = bundle("o1");
+  const income = bundleSale("o1", 90, { date: "2026-11-04" });
+  const included = calculate(store, categories, [income], [order]);
+  assert.equal(included.shippingSavings, 4);
+  const excluded = calculate(store, categories, [], [order]);
+  assert.equal(excluded.shippingSavings, 0); assert.equal(excluded.productCost, 0); assert.equal(excluded.revenue, 0);
+});
+
+test("only the selected order-income category can claim an order's shipping saving", () => {
+  const r = calculate(store, categories, [bundleSale("o1", 90, { categoryId: "other" }), tx("manual", "sales", "income", 90)], [bundle("o1")]);
+  assert.equal(r.revenue, 90); assert.equal(r.shippingSavings, 0); assert.equal(r.productCost, 24);
+});
+
+test("additional receipts and duplicate snapshots cannot apply the same package saving twice", () => {
+  const sale = bundleSale("o1");
+  const duplicate = calculate(store, categories, [sale, sale], [bundle("o1"), bundle("o1")]);
+  assert.equal(duplicate.revenue, 90); assert.equal(duplicate.shippingSavings, 4);
+  const extraReceipt = calculate(store, categories, [sale, tx("manual-extra", "sales", "income", 90, { orderId: "o1" })], [bundle("o1")]);
+  assert.equal(extraReceipt.revenue, 180); assert.equal(extraReceipt.baseProductCost, 48); assert.equal(extraReceipt.shippingSavings, 4); assert.equal(extraReceipt.productCost, 44);
+});
+
+test("missing or foreign-store orders are not used to infer a package saving", () => {
+  for (const orders of [[], [bundle("o1", [2], { storeId: "s2" })]]) {
+    const r = calculate(store, categories, [bundleSale("o1")], orders);
+    assert.equal(r.shippingSavings, 0); assert.equal(r.productCost, 24);
+  }
+});
+
+test("4 AZN shipping is never silently treated as 4 USD, EUR or TRY", () => {
+  for (const currency of ["USD", "EUR", "TRY"]) {
+    const r = calculate({ ...store, currency }, categories, [bundleSale("o1")], [bundle("o1")]);
+    assert.equal(r.shippingSavings, 0); assert.equal(r.productCost, 24);
+  }
+});
+
+test("invalid or unknown quantities never create a shipping credit", () => {
+  for (const quantities of [[0], [-1], [1.5], [Number.MAX_SAFE_INTEGER + 1], [Number.MAX_SAFE_INTEGER, 1]]) {
+    assert.equal(calculate(store, categories, [bundleSale("o1")], [bundle("o1", quantities)]).shippingSavings, 0);
+  }
+  const legacy = bundle("o1", [], { items: undefined, productId: null, product: "3 ürün olabilir" });
+  assert.equal(calculate(store, categories, [bundleSale("o1")], [legacy]).shippingSavings, 0);
+});
+
+test("legacy single-product orders with explicit quantity are supported", () => {
+  for (const productId of ["p1", null]) {
+    const legacy = bundle("o1", [], { items: undefined, productId, quantity: 2 });
+    assert.equal(calculate(store, categories, [bundleSale("o1")], [legacy]).shippingSavings, 4);
+  }
+});
+
+test("a deeply discounted bundle cannot produce negative costs or consume other sales' costs", () => {
+  const r = calculate(store, categories, [bundleSale("o1", 1), tx("normal-sale", "sales", "income", 450)], [bundle("o1", [100])]);
+  assert.equal(r.baseProductCost, 120.27); assert.equal(r.shippingSavings, 0.27); assert.equal(r.productCost, 120);
+  const free = calculate({ ...store, profitSettings: { ...settings, averageUnitCost: 0 } }, categories, [bundleSale("o1")], [bundle("o1")]);
+  assert.equal(free.productCost, 0); assert.equal(free.shippingSavings, 0);
+});
+
+test("bundle adjustment leaves stored orders and financial records unchanged and ignores actual shipping charges", () => {
+  const order = bundle("o1", [2], { amount: 999, shippingCost: 40 });
+  const sale = bundleSale("o1"); const before = JSON.stringify([order, sale]);
+  const r = calculate(store, categories, [sale, tx("shipping", "shipping", "expense", 40)], [order]);
+  assert.equal(r.revenue, 90); assert.equal(r.shippingSavings, 4); assert.equal(r.productCost, 20);
+  assert.equal(JSON.stringify([order, sale]), before);
+});
