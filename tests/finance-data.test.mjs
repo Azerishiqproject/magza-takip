@@ -8,7 +8,7 @@ import ts from "typescript";
 
 const require = createRequire(import.meta.url);
 const baseOrder = { id: "o1", storeId: "s1", customerName: "Aylin", product: "Çanta", amount: 100, shippingCost: 10, stage: "delivered", status: "completed", createdAt: "2026-10-01T10:00:00Z", updatedAt: "2026-10-02T10:00:00Z", completedAt: "2026-10-02T10:00:00Z" };
-const baseProduct = { id: "p1", storeId: "s1", name: "Çanta", sku: "CANTA", price: 50, stock: 10, active: true, createdAt: "2026-10-01T10:00:00Z", updatedAt: "2026-10-01T10:00:00Z" };
+const baseProduct = { id: "p1", storeId: "s1", name: "Çanta", sku: "CANTA", price: 50, purchasePrice: 20, stock: 10, active: true, createdAt: "2026-10-01T10:00:00Z", updatedAt: "2026-10-01T10:00:00Z" };
 const baseStore = { id: "s1", name: "Mağaza", domain: "example.com", currency: "AZN", color: "#2dd4bf", status: "active" };
 
 function harness() {
@@ -99,7 +99,7 @@ function harness() {
     for (const [name, documents] of Object.entries({ stores, orders, transactions, categories, storeFolders, products })) emit(name, documents);
     return render();
   };
-  return { render, online, emit, cloud, commits, fail: () => { fail = true; }, reconcile: load(resolve("src/lib/order-transactions.ts")).reconcileOrderTransactions };
+  return { render, online, emit, cloud, commits, fail: () => { fail = true; }, reconcile: load(resolve("src/lib/order-transactions.ts")).reconcileOrderTransactions, calculate: load(resolve("src/lib/profitability.ts")).calculateProfitability };
 }
 
 test("completed order edits synchronize amounts and preserve financial dates/categories", async () => {
@@ -246,7 +246,7 @@ test("deleting a large folder ungroups all server stores within batch limits", a
 
 
 test("product creation and stock adjustments stay within one store and reject invalid quantities", async () => {
-  const app = harness(); await app.online({ orders: [], products: [] }).addProduct({ storeId: "s1", name: "Yeni ürün", sku: "YENI", price: 15, stock: 4 });
+  const app = harness(); await app.online({ orders: [], products: [] }).addProduct({ storeId: "s1", name: "Yeni ürün", sku: "YENI", price: 15, purchasePrice: 5, stock: 4 });
   const product = app.render().products[0];
   await app.render().adjustStock(product.id, 6);
   assert.equal(app.render().products[0].stock, 10);
@@ -543,4 +543,73 @@ test("a snapshot arriving before addTransaction resolves does not double the bal
   await pending;
   assert.equal(app.render().transactions.length, 1);
   assert.equal(app.render().transactions.reduce((sum, record) => sum + record.amount, 0), 100);
+});
+
+test("purchase price persists only on the product; changing it recalculates an existing completed order", async () => {
+  const app = harness();
+  const categories = [{ id: "s1-order-income", storeId: "s1", name: "Sipariş gelirleri", type: "income" }, { id: "ads", storeId: "s1", name: "Reklam", type: "expense" }];
+  const store = { ...baseStore, profitSettings: { salesCategoryIds: ["s1-order-income"], advertisingCategoryIds: ["ads"] } };
+  const order = await app.online({ stores: [store], categories, products: [baseProduct], orders: [] }).addOrder({ storeId: "s1", customerName: "Demo", items: [{ productId: "p1", quantity: 2 }], amount: 100 });
+  for (const stage of ["contacted", "responded", "addressed"]) await app.render().updateOrderStage(order.id, stage);
+  await app.render().completeOrder(order.id);
+  const first = app.render(); const originalOrder = JSON.stringify(first.orders[0]); const originalTx = JSON.stringify(first.transactions);
+  const before = app.calculate(store, categories, first.transactions, first.orders, first.products);
+  await first.updateProduct("p1", { name: baseProduct.name, sku: baseProduct.sku, price: 50, purchasePrice: 25, active: true });
+  const next = app.render(); const after = app.calculate(store, categories, next.transactions, next.orders, next.products);
+  assert.equal(app.cloud.get("products/p1").purchasePrice, 25);
+  assert.equal(next.products[0].stock, 8); assert.equal(after.productCost - before.productCost, 10); assert.equal(before.profit - after.profit, 10);
+  assert.equal(JSON.stringify(next.orders[0]), originalOrder); assert.equal(JSON.stringify(next.transactions), originalTx);
+  const saved = app.cloud.get(`orders/${order.id}`);
+  assert.equal("purchasePrice" in saved, false); assert.equal("unitCost" in saved, false);
+  assert.ok(saved.items.every(i => !("purchasePrice" in i) && !("unitCost" in i)));
+  assert.ok(app.commits.at(-1).every(op => op.reference.path === "products/p1"));
+});
+
+test("product purchase prices reject invalid money and missing new-product costs without writes", async () => {
+  const app = harness(); const data = app.online({ products: [baseProduct], orders: [] });
+  const fields = { name: baseProduct.name, sku: baseProduct.sku, price: 50, active: true };
+  for (const purchasePrice of [-1, NaN, Infinity, 0.001]) {
+    await assert.rejects(data.updateProduct("p1", { ...fields, purchasePrice }), /Alış fiyatı/);
+    await assert.rejects(data.addProduct({ ...baseProduct, purchasePrice }), /Alış fiyatı/);
+  }
+  await assert.rejects(data.addProduct({ ...baseProduct, purchasePrice: undefined }), /alış fiyatını/);
+  assert.equal(app.commits.length, 0); assert.equal(app.render().products[0].purchasePrice, 20);
+  await data.updateProduct("p1", { ...fields, purchasePrice: 0 });
+  assert.equal(app.cloud.get("products/p1").purchasePrice, 0);
+});
+
+test("legacy products can acquire a purchase price without rewriting orders or finance", async () => {
+  const app = harness(); const product = { ...baseProduct }; delete product.purchasePrice;
+  const order = { ...baseOrder, productId: "p1", quantity: 1 };
+  const data = app.online({ products: [product], orders: [order] });
+  await data.updateProduct("p1", { name: product.name, sku: product.sku, price: product.price, active: true, purchasePrice: 7 });
+  assert.equal(app.render().products[0].purchasePrice, 7);
+  assert.deepEqual(app.render().orders[0], order); assert.equal(app.render().transactions.length, 0);
+  assert.ok(app.commits[0].every(op => op.reference.path === "products/p1"));
+});
+
+test("failed product price saves leave both server and local costs unchanged", async () => {
+  const app = harness(); const data = app.online({ products: [baseProduct], orders: [] }); app.fail();
+  await assert.rejects(data.updateProduct("p1", { name: baseProduct.name, sku: baseProduct.sku, price: 50, purchasePrice: 99, active: true }), /write failed/);
+  assert.equal(app.cloud.get("products/p1").purchasePrice, 20); assert.equal(app.render().products[0].purchasePrice, 20);
+});
+
+test("AZN bundle orders default to one 4 AZN shipping charge and do not copy purchase prices on edit", async () => {
+  const app = harness();
+  const order = await app.online({ products: bundleProducts, orders: [] }).addOrder(bundleInput);
+  assert.equal(order.shippingCost, 4);
+  for (const stage of ["contacted", "responded", "addressed"]) await app.render().updateOrderStage(order.id, stage);
+  await app.render().completeOrder(order.id);
+  assert.equal(app.render().transactions.filter(t => t.type === "expense").length, 1);
+  assert.equal(app.render().transactions.find(t => t.type === "expense").amount, 4);
+  await app.render().updateOrder(order.id, { items: [{ productId: "p1", quantity: 3 }, { productId: "p2", quantity: 1 }] });
+  const saved = app.cloud.get(`orders/${order.id}`);
+  assert.equal(saved.shippingCost, 4); assert.equal("unitCost" in saved, false);
+  assert.ok(saved.items.every(i => !("purchasePrice" in i) && !("unitCost" in i)));
+});
+
+test("new non-AZN orders do not receive a converted 4-unit shipping charge", async () => {
+  const app = harness();
+  const order = await app.online({ stores: [{ ...baseStore, currency: "USD" }], products: [baseProduct], orders: [] }).addOrder({ storeId: "s1", customerName: "Demo", productId: "p1", quantity: 1, amount: 50 });
+  assert.equal(order.shippingCost, 0);
 });

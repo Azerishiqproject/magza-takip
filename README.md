@@ -11,7 +11,7 @@ Shopify mağazaları için çoklu mağaza, gelir/gider, kategori ve kârlılık 
 - Mağaza bazında özel gelir/gider kategorileri
 - Manuel gelir ve gider kaydı
 - İşlemler ve son hareketler listesinden kayıt düzenleme; siparişe bağlı tutarları siparişle birlikte güncelleme
-- Mağaza bazında ürün adı, ürün kodu, birim fiyat ve başlangıç stoğu oluşturma
+- Mağaza bazında ürün adı, ürün kodu, satış fiyatı, alış fiyatı ve başlangıç stoğu oluşturma
 - Stok ekleme/azaltma, az stok ve tükenen ürün filtreleri, satışa açık/kapalı ürün yönetimi
 - Müşteri, ürün ve adet seçerek sipariş oluşturma; “Ürün ekle” ile tek siparişte birden fazla ürün/paket (bundle) oluşturma
 - Ürün satırlarını ekleme/çıkarma, satır ve paket toplamını otomatik hesaplama; paket indirimi için sipariş tutarını değiştirme
@@ -60,7 +60,7 @@ Kullanılan koleksiyonlar:
 - `storeFolders`: `name`
 - `categories`: `storeId`, `name`, `type`, `color`
 - `transactions`: `storeId`, `categoryId`, `type`, `title`, `amount`, `date`, `note`
-- `products`: `storeId`, `name`, `sku`, `price`, `stock`, `active`, `createdAt`, `updatedAt`
+- `products`: `storeId`, `name`, `sku`, `price`, `purchasePrice`, `stock`, `active`, `createdAt`, `updatedAt`
 - `orders`: `storeId`, `customerName`, `product` (ürün adı), `productId`, `quantity`, `items` (ürün, adet, ad/fiyat bilgileri), `stockDeducted`, `amount`, `stage`, `status`, aşama notları ve kargo bilgisi
 
 Çok ürünlü siparişler `items` listesinde saklanır; her satır ürün kimliği, adet, sipariş anındaki ürün adı ve birim fiyatını içerir. Her ürünün stoğu aynı Firestore transaction içinde güncellenir: satır ekleme/çıkarma ve adet değişikliklerinde yalnızca stok farkı uygulanır. Teslimatta paket toplamı tek gelir kaydı oluşturur. Eski tek ürünlü kayıtlar da okunur; düzenleme sırasında ek ürün seçilerek pakete dönüştürülebilir.
@@ -95,16 +95,19 @@ Finans raporu teslim edilen siparişlerin finans kayıtlarını ve manuel gelir/
 
 ## Mağaza bazında ROAS ve ürün kârı
 
-Ana sayfadaki **ROAS ve ürün kârı** düğmesi ayrı bir pencere açar. Pencere kapatılabilir; sayfa açılışında otomatik gösterilmez. Ayarı olmayan mağaza için ilk açılışta kargo dahil ürün maliyeti, ortalama satış fiyatı ve reklam gideri kategorileri sorulur. Her mağazanın ayarı ayrı kaydedilir.
+**Ürünler ve stok** bölümünde her ürüne satış fiyatının yanında **alış fiyatı** girilir. Alış fiyatına kargo eklenmez. Yeni ürünlerde alış fiyatı zorunludur; eski ürünler düzenlenerek tamamlanabilir. Sıfır maliyet açıkça girilebilir, boş alış fiyatı sıfır kabul edilmez.
 
-- Gelir kaynağı varsayılan olarak **Sipariş gelirleri** kategorisidir; ayarlardan gelir kategorileri seçilebilir. Gelir ve baz maliyet oranı kategori kayıtlarından hesaplanır; siparişler tekrar gelir olarak eklenmez. Ürün adedi yalnızca paket kargo düzeltmesinde kullanılır.
-- Baz maliyet payı = seçili gelir kategorilerinin toplamı × (girilen kargo dahil ürün maliyeti / girilen ortalama satış fiyatı). Yuvarlama toplam tutarda yapılır.
-- AZN mağazalarında, seçili döneme dahil otomatik sipariş geliriyle eşleşen tamamlanmış paketlerde ilk üründen sonraki her ürün için **4 AZN** kargo payı baz maliyetten düşülür: 2 ürün → 4 AZN, 3 ürün → 8 AZN. Aynı üründen alınan adetler ve farklı ürün satırları birlikte sayılır. Adedi olmayan eski/manuel kayıtlar için düzeltme tahmin edilmez. Düzeltme ilgili siparişin tahmini maliyetini aşmaz; farklı para birimlerinde 4 AZN dönüşümsüz uygulanmaz.
-- ROAS = seçili satış geliri / kullanıcının seçtiği reklam kategorilerinin gider toplamı. Reklam gideri yoksa oran hesaplanmaz.
-- Satılan ürünlerin kârı = satış geliri − maliyet payı − seçili reklam gideri. Diğer giderler, stok alımları, ayrı kargo kayıtları ve diğer gelirler bu hesaplamaya dahil edilmez.
-- Başa baş ROAS = satış geliri / (satış geliri − maliyet payı). Katkı pozitif değilse sonlu bir başa baş oranı gösterilmez.
-- Ayar önizlemesi = ortalama satış fiyatı / (ortalama satış fiyatı − kargo dahil ürün maliyeti). Ayrı kargo/paket maliyeti sorulmaz.
+Ana sayfadaki **ROAS ve ürün kârı** düğmesi ayrı bir pencere açar. Ayarlardan her mağazanın reklam gideri kategorileri ve satış geliri kaynağı seçilir. Eski ortalama satış fiyatı / maliyet oranı ve paket kargo indirimi artık kullanılmaz.
 
-Pencerede ROAS, başa baş eşiği, ürün kârı ve görsel performans göstergesi bulunur. Mağaza karşılaştırması da pencerenin içindedir. Ana sayfadaki dönem filtresi kullanılır; mağazalar kendi para birimleriyle gösterilir. Ortalama fiyat ve maliyet değiştirildiğinde geçmiş dönem tahminleri de güncellenir. Mevcut gelir-gider ve sipariş kayıtları değişmez. Genel gelir-gider raporları tüm kayıtları kullanmaya devam eder.
+- Gelir kaynağı varsayılan olarak **Sipariş gelirleri** kategorisidir. Yalnızca seçili dönemin seçili finans kayıtları gelir sayılır; sipariş tutarları ayrıca eklenmez.
+- Her gelir, bağlı olduğu tamamlanmış siparişin ürünlerine eşlenir. **Alış maliyeti = her ürünün stoktaki güncel alış fiyatı × siparişteki adedi**. Aynı veya farklı ürünlerden oluşan paketler desteklenir. Alış fiyatı siparişe kopyalanmaz; stok ekranında fiyat değiştirildiğinde geçmiş siparişlerin hesabı da güncellenir.
+- **AZN siparişlerinde sipariş başına bir kez 4 ₼ kargo** eklenir. Ürün sayısı kargo tutarını artırmaz veya maliyetten indirim oluşturmaz. Yeni AZN siparişlerinin kayıtlı kargo tutarı da varsayılan 4 ₼ olur. Diğer para birimlerinde siparişte kayıtlı kargo kullanılır; 4 AZN başka para birimine dönüşümsüz uygulanmaz.
+- Bir siparişin seçili dönemde birden fazla gelir kaydı varsa gelirleri toplanır, ürün maliyeti ve kargo bir kez sayılır. Aynı finans kaydının tekrarları gelir veya maliyeti çoğaltmaz.
+- **ROAS = seçili satış geliri / seçili reklam gideri**. Reklam gideri yoksa oran gösterilmez.
+- **Ürün kârı = gelir − satılan ürünlerin alış maliyeti − sipariş kargosu − reklam**. Stok alımları, domain, paket, iptal kargoları ve diğer giderler bu bölüme eklenmez. Ayrı kargo gider kayıtları ikinci kez düşülmez.
+- **Sipariş başa baş ROAS = sipariş geliri / (sipariş geliri − alış maliyeti − kargo)**. Toplam başa baş ROAS da toplam gelir ve toplam katkıyla hesaplanır; sipariş oranlarının aritmetik ortalaması değildir. Katkı sıfır veya negatifse sonlu bir eşik gösterilmez.
+- Alış fiyatı, ürün/adet bağlantısı veya gerekli kargo bilgisi eksikse ya da gelir tamamlanmış bir siparişe bağlı değilse ROAS hesaplanabilir; kâr ve başa baş ROAS eksikler tamamlanana kadar gösterilmez. Eksik kayıtlar pencerede belirtilir.
 
-Ana sayfadaki gider dağılımı kartında **Gider dağılımı / ROAS** düğmeleri bulunur. Gider görünümü kategori tutarlarını, yüzdelerini ve pay çubuklarını gösterir; dört kategoriden fazlası “Tüm kategoriler” ile açılır. Kategorisi bulunamayan giderler de “Kategorisiz” altında toplamda korunur. ROAS görünümü aynı mağaza ve dönem için küçük bir ROAS, başa baş eşiği ve ürün kârı özeti gösterir; **Ayrıntılı ROAS** düğmesi mevcut büyük pencereyi açar. Küçük ve büyük görünüm aynı hesaplama fonksiyonunu kullanır.
+Pencerede seçili tarih aralığı, ROAS, başa baş eşiği, ürün kârı ve maliyetlerin dökümü bulunur. **Sipariş bazında maliyet ve başa baş ROAS** bölümü her siparişin gelirini, ürün maliyetini, kargosunu ve reklam öncesi katkısını gösterir. Reklam yalnızca dönem toplamından düşülür. Sipariş kartlarında da kargo dahil maliyet ve başa baş ROAS bulunur.
+
+Ana sayfadaki gider dağılımı kartında **Gider dağılımı / ROAS** düğmeleri bulunur. Küçük ve büyük ROAS görünümü aynı hesaplama fonksiyonunu ve ana sayfanın dönem filtresini kullanır. Tüm mağazaların karşılaştırması büyük pencerenin içindedir. Genel gelir-gider raporları kayıtlı finans işlemlerini kullanmaya devam eder; geçmiş işlem ve sipariş kayıtları yeniden yazılmaz.

@@ -1,10 +1,8 @@
 import { validReportDate } from "./store-analytics";
-import { getOrderItems } from "./order-items";
-import type { Category, Order, ProfitSettings, Store, Transaction } from "./types";
+import { calculateOrderProfitability, moneyCents as cents, validMoney } from "./order-profitability";
+import type { Category, Order, Product, ProfitSettings, Store, Transaction } from "./types";
 
-const cents = (value: number) => Math.round((value + Number.EPSILON) * 100);
-const validCost = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0 && Number.isSafeInteger(cents(value));
-const validMoney = (value: unknown): value is number => validCost(value) && Math.abs(value - cents(value) / 100) < 1e-8;
+export { breakEvenRoas } from "./order-profitability";
 const normalize = (value: string) => value.toLocaleLowerCase("tr-TR").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ı/g, "i").replace(/ə/g, "e");
 
 export function suggestedProfitCategories(storeId: string, categories: Category[]) {
@@ -16,83 +14,63 @@ export function suggestedProfitCategories(storeId: string, categories: Category[
 }
 
 export function validateProfitSettings(settings: ProfitSettings, storeId: string, categories: Category[]) {
-  if (!settings || !validMoney(settings.averageUnitCost) || !validMoney(settings.averageSalePrice) || settings.averageSalePrice < 0.01) throw new Error("Ortalama satış fiyatı en az 0,01; kargo dahil maliyet sıfır veya pozitif ve en fazla iki ondalık basamaklı olmalıdır.");
-  const fields = ["advertisingCategoryIds", "salesCategoryIds"] as const;
-  for (const field of fields) {
+  if (!settings) throw new Error("Gelir ve reklam kategorilerini seçin.");
+  for (const field of ["advertisingCategoryIds", "salesCategoryIds"] as const) {
     if (!Array.isArray(settings[field]) || settings[field].some((id) => !categories.some((c) => c.id === id && c.storeId === storeId && c.type === (field === "salesCategoryIds" ? "income" : "expense")))) throw new Error("Bu mağazaya ait geçerli kategoriler seçin.");
   }
   if (!settings.advertisingCategoryIds.length) throw new Error("Reklam gideri için en az bir kategori seçin.");
   if (!settings.salesCategoryIds.length && categories.some((c) => c.storeId === storeId && c.type === "income")) throw new Error("Satış gelirinin hesaplanacağı kategoriyi seçin.");
 }
 
-export function breakEvenRoas(salePrice: number, cost: number): number | null {
-  return validCost(salePrice) && salePrice >= 0.01 && validCost(cost) && cents(salePrice) > cents(cost) ? cents(salePrice) / (cents(salePrice) - cents(cost)) : null;
-}
-
 export type Profitability = ReturnType<typeof calculateProfitability>;
 
-function shippingUnits(order: Order): number | null {
-  const items = getOrderItems(order);
-  if (items.length) {
-    if (items.some((item) => !Number.isSafeInteger(item.quantity) || item.quantity <= 0)) return null;
-    const quantity = items.reduce((sum, item) => sum + item.quantity, 0);
-    return Number.isSafeInteger(quantity) ? quantity : null;
-  }
-  // Older records may have an explicit quantity without a product link. Never
-  // infer units from revenue or free-text product/customer descriptions.
-  return order.items === undefined && Number.isSafeInteger(order.quantity) && order.quantity! > 0 ? order.quantity! : null;
-}
-
-// Selected income records remain the only revenue source. Quantities are used
-// solely to remove repeated shipping from a completed multi-unit package.
-export function calculateProfitability(store: Store, categories: Category[], transactions: Transaction[], orders: Order[] = []) {
-  const settings = store.profitSettings;
-  const roles = settings ?? suggestedProfitCategories(store.id, categories);
+// Revenue comes only from selected financial records. Link each receipt to its
+// completed order, charging product quantities and one shipping fee per package.
+export function calculateProfitability(store: Store, categories: Category[], transactions: Transaction[], orders: Order[] = [], products: Product[] = []) {
+  const roles = store.profitSettings ?? suggestedProfitCategories(store.id, categories);
   const categoryMap = new Map(categories.filter((c) => c.storeId === store.id).map((c) => [c.id, c]));
-  // A store configured before its first sale gets its auto-created order income
-  // category when that category becomes available. Explicit selections are kept.
   const salesIds = (roles.salesCategoryIds.length ? roles.salesCategoryIds : suggestedProfitCategories(store.id, categories).salesCategoryIds).filter((id) => categoryMap.get(id)?.type === "income");
   const advertisingIds = roles.advertisingCategoryIds.filter((id) => categoryMap.get(id)?.type === "expense");
-  const orderMap = new Map(orders.filter((order) => order.storeId === store.id && order.status === "completed").map((order) => [order.id, order]));
-  const configured = Boolean(settings && validMoney(settings.averageUnitCost) && validMoney(settings.averageSalePrice) && settings.averageSalePrice >= 0.01);
-  const records = [...new Map(transactions.filter((t) => t.storeId === store.id && validReportDate(t.date) && validCost(t.amount) && t.amount > 0 && ["income", "expense"].includes(t.type)).map((t) => [t.id, t])).values()];
-  let revenue = 0, adSpend = 0, saleRecords = 0;
-  let shippingSavings = 0, bundleOrders = 0, extraBundleUnits = 0;
+  const orderMap = new Map(orders.filter((o) => o.storeId === store.id && o.status === "completed").map((o) => [o.id, o]));
+  const records = [...new Map(transactions.filter((t) => t.storeId === store.id && validReportDate(t.date) && validMoney(t.amount) && t.amount > 0 && ["income", "expense"].includes(t.type)).map((t) => [t.id, t])).values()];
+  const receipts = new Map<string, { order: Order; revenue: number; date: string }>();
+  let revenue = 0, adSpend = 0, saleRecords = 0, unmatchedRevenue = 0, unmatchedRecords = 0;
   for (const record of records) {
     const amount = cents(record.amount);
-    const category = categoryMap.get(record.categoryId);
-    if (record.type === "expense" && category?.type === "expense" && advertisingIds.includes(record.categoryId)) {
-      adSpend += amount;
-    } else if (record.type === "income" && category?.type === "income" && salesIds.includes(record.categoryId)) {
+    if (record.type === "expense" && advertisingIds.includes(record.categoryId)) adSpend += amount;
+    else if (record.type === "income" && salesIds.includes(record.categoryId)) {
       revenue += amount; saleRecords++;
-      // Anchor the correction to the order's single generated income record so
-      // additional manual receipts cannot claim this saving a second time.
       const order = record.orderId ? orderMap.get(record.orderId) : undefined;
-      if (configured && store.currency === "AZN" && order && record.id === `order-income-${order.id}`) {
-        const quantity = shippingUnits(order);
-        if (quantity !== null && quantity > 1 && Number.isSafeInteger((quantity - 1) * 400)) {
-          const orderCost = Math.round(amount * cents(settings!.averageUnitCost) / cents(settings!.averageSalePrice));
-          // Discounts or incorrect historical quantities must never make this
-          // order's estimated cost negative or eat into another order's cost.
-          const saving = Math.min((quantity - 1) * 400, orderCost);
-          shippingSavings += saving; bundleOrders++; extraBundleUnits += quantity - 1;
-        }
-      }
+      if (!order) { unmatchedRevenue += amount; unmatchedRecords++; continue; }
+      const group = receipts.get(order.id);
+      if (group) { group.revenue += amount; if (record.date < group.date) group.date = record.date; }
+      else receipts.set(order.id, { order, revenue: amount, date: record.date });
     }
   }
-  // Round once after applying the cost ratio to the entire income total.
-  const baseProductCost = configured ? Math.round(revenue * cents(settings!.averageUnitCost) / cents(settings!.averageSalePrice)) : null;
-  const appliedSavings = baseProductCost === null ? 0 : Math.min(shippingSavings, baseProductCost);
-  const productCost = baseProductCost === null ? null : baseProductCost - appliedSavings;
-  const contribution = productCost === null ? null : revenue - productCost;
+  const orderResults = [...receipts.values()].map(({ order, revenue, date }) => ({
+    orderId: order.id, customerName: order.customerName, product: order.product, date, revenue: revenue / 100,
+    ...calculateOrderProfitability(store, order, products, revenue / 100),
+  })).sort((a, b) => b.date.localeCompare(a.date) || a.orderId.localeCompare(b.orderId));
+  const missingCostOrders = orderResults.filter((o) => o.totalCost === null).length;
+  const costComplete = unmatchedRecords === 0 && missingCostOrders === 0;
+  const purchase = costComplete ? orderResults.reduce((sum, o) => sum + cents(o.purchaseCost!), 0) : null;
+  const shipping = costComplete ? orderResults.reduce((sum, o) => sum + cents(o.shippingCost!), 0) : null;
+  const cost = purchase === null || shipping === null ? null : purchase + shipping;
+  const contribution = cost === null ? null : revenue - cost;
   return {
-    revenue: revenue / 100, adSpend: adSpend / 100, productCost: productCost === null ? null : productCost / 100,
-    baseProductCost: baseProductCost === null ? null : baseProductCost / 100,
-    shippingSavings: appliedSavings / 100, bundleOrders, extraBundleUnits,
-    profit: contribution === null ? null : (contribution - adSpend) / 100,
+    revenue: revenue / 100, adSpend: adSpend / 100,
+    purchaseCost: purchase === null ? null : purchase / 100,
+    shippingCost: shipping === null ? null : shipping / 100,
+    productCost: cost === null ? null : cost / 100,
+    profit: contribution === null || !advertisingIds.length ? null : (contribution - adSpend) / 100,
     roas: adSpend > 0 ? revenue / adSpend : null,
-    breakEven: advertisingIds.length > 0 && contribution !== null && revenue > 0 && contribution > 0 ? revenue / contribution : null,
-    saleRecords, configured, noSalesCategory: salesIds.length === 0, noAdvertisingCategory: advertisingIds.length === 0,
+    breakEven: contribution !== null && contribution > 0 && revenue > 0 ? revenue / contribution : null,
+    saleRecords, orderCount: receipts.size, soldUnits: costComplete ? orderResults.reduce((sum, o) => sum + o.units!, 0) : null,
+    configured: Boolean(store.profitSettings), costComplete, missingCostOrders,
+    missingProducts: [...new Set(orderResults.flatMap((o) => o.missingProducts))],
+    missingShippingOrders: orderResults.filter((o) => o.missingShipping).length,
+    unmatchedRevenue: unmatchedRevenue / 100, unmatchedRecords, orderResults,
+    noSalesCategory: salesIds.length === 0, noAdvertisingCategory: advertisingIds.length === 0,
     noContribution: contribution !== null && revenue > 0 && contribution <= 0,
   };
 }

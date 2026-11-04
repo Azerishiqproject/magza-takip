@@ -39,6 +39,6 @@ export const demoTransactions: Transaction[] = Array.from({ length: 64 }, (_, i)
 
 
 export const demoProducts: Product[] = [
-  { id: "demo-bag", storeId: "north-atelier", name: "Deri çanta", sku: "CANTA-01", price: 120, stock: 20, active: true, createdAt: "2026-10-01T10:00:00Z", updatedAt: "2026-10-01T10:00:00Z" },
-  { id: "demo-wallet", storeId: "north-atelier", name: "Cüzdan", sku: "CUZDAN-01", price: 45, stock: 5, active: true, createdAt: "2026-10-01T10:00:00Z", updatedAt: "2026-10-01T10:00:00Z" },
+  { id: "demo-bag", storeId: "north-atelier", name: "Deri çanta", sku: "CANTA-01", price: 120, purchasePrice: 40, stock: 20, active: true, createdAt: "2026-10-01T10:00:00Z", updatedAt: "2026-10-01T10:00:00Z" },
+  { id: "demo-wallet", storeId: "north-atelier", name: "Cüzdan", sku: "CUZDAN-01", price: 45, purchasePrice: 12, stock: 5, active: true, createdAt: "2026-10-01T10:00:00Z", updatedAt: "2026-10-01T10:00:00Z" },
 ];

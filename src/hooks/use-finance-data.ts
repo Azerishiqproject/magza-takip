@@ -10,6 +10,7 @@ import { reconcileOrderTransactions } from "@/lib/order-transactions";
 import { getOrderItems } from "@/lib/order-items";
 import { applyStockChange, orderStockChanges } from "@/lib/order-stock";
 import { validateProfitSettings } from "@/lib/profitability";
+import { validMoney } from "@/lib/order-profitability";
 
 export function useFinanceData() {
   const [stores, setStores] = useState<Store[]>(demoStores);
@@ -197,12 +198,14 @@ export function useFinanceData() {
     return { persisted: !isDemo };
   };
 
-  const validateProduct = (product: Pick<Product, "name" | "sku" | "price">) => {
+  const validateProduct = (product: Pick<Product, "name" | "sku" | "price" | "purchasePrice">) => {
     if (!product.name.trim() || !Number.isFinite(product.price) || product.price < 0) throw new Error("Ürün adı ve fiyatını kontrol edin.");
+    if (product.purchasePrice !== undefined && !validMoney(product.purchasePrice)) throw new Error("Alış fiyatı sıfır veya pozitif ve en fazla iki ondalık basamaklı olmalıdır.");
   };
 
-  const addProduct = async (data: Pick<Product, "storeId" | "name" | "sku" | "price" | "stock">) => {
+  const addProduct = async (data: Pick<Product, "storeId" | "name" | "sku" | "price" | "stock"> & { purchasePrice: number }) => {
     validateProduct(data);
+    if (!validMoney(data.purchasePrice)) throw new Error("Ürünün alış fiyatını girin.");
     if (!stores.some((item) => item.id === data.storeId)) throw new Error("Mağaza bulunamadı.");
     if (!Number.isSafeInteger(data.stock) || data.stock < 0) throw new Error("Stok sıfır veya pozitif bir tam sayı olmalıdır.");
     const now = new Date().toISOString();
@@ -219,7 +222,7 @@ export function useFinanceData() {
     return { persisted: !isDemo };
   };
 
-  const updateProduct = async (id: string, changes: Pick<Product, "name" | "sku" | "price" | "active">) => {
+  const updateProduct = async (id: string, changes: Pick<Product, "name" | "sku" | "price" | "active" | "purchasePrice">) => {
     validateProduct(changes);
     const fields = { ...changes, name: changes.name.trim(), sku: changes.sku.trim(), updatedAt: new Date().toISOString() };
     if (!inventoryRef.current.products.some((item) => item.id === id)) throw new Error("Ürün bulunamadı.");
@@ -345,7 +348,7 @@ export function useFinanceData() {
     if (!("items" in data) && !data.productId) throw new Error("Bir ürün seçin.");
     const id = crypto.randomUUID(); const now = new Date().toISOString();
     const selection = "items" in data ? { items: data.items.map((item) => ({ productId: item.productId, quantity: item.quantity, product: "" })) } : { productId: data.productId, quantity: data.quantity };
-    const result = await mutateOrder(id, () => ({ storeId: data.storeId, customerName: data.customerName, amount: data.amount, ...selection, id, product: "", stage: "new", status: "active", createdAt: now, updatedAt: now }));
+    const result = await mutateOrder(id, () => ({ storeId: data.storeId, customerName: data.customerName, amount: data.amount, ...selection, shippingCost: stores.find((s) => s.id === data.storeId)?.currency === "AZN" ? 4 : 0, id, product: "", stage: "new", status: "active", createdAt: now, updatedAt: now }));
     return result.order!;
   };
 

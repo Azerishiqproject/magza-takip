@@ -12,8 +12,9 @@ export interface Store {
 }
 
 export interface ProfitSettings {
-  averageUnitCost: number;
-  averageSalePrice: number;
+  /** Legacy settings, retained for reading old documents; no longer used. */
+  averageUnitCost?: number;
+  averageSalePrice?: number;
   advertisingCategoryIds: string[];
   salesCategoryIds: string[];
 }
@@ -52,6 +53,7 @@ export interface Product {
   name: string;
   sku: string;
   price: number;
+  purchasePrice?: number;
   stock: number;
   active: boolean;
   createdAt: string;

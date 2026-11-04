@@ -4,6 +4,8 @@ import { useMemo, useRef, useState } from "react";
 import { CalendarDays, Check, CheckCircle2, Clock3, MapPin, MessageCircle, PackageCheck, Pencil, PhoneOutgoing, Plus, Search, Trash2, UserRound, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { orderProductLabel } from "@/lib/order-items";
+import { calculateOrderProfitability } from "@/lib/order-profitability";
+import { reportMoney } from "@/lib/store-analytics";
 import { OrderProductFields, submittedOrderItems } from "./order-product-fields";
 import { money } from "@/lib/format";
 import type { NewOrder, Order, OrderChanges, OrderStage, Product, Store } from "@/lib/types";
@@ -134,7 +136,7 @@ export function OrdersView({ store, orders, products, onProducts, onAdd, onStage
       </div>
 
       <div className="grid gap-3">
-        {filtered.map((order) => <OrderCard key={order.id} order={order} store={store} submitting={submitting} onAdvance={(stage) => void advance(order, stage)} onEdit={() => { setSelectedId(order.id); setAction("edit"); }} onDelete={() => { setSelectedId(order.id); setAction("delete"); }} onCancel={() => { setSelectedId(order.id); setAction("cancel"); }}/>) }
+        {filtered.map((order) => <OrderCard key={order.id} order={order} store={store} products={products} submitting={submitting} onAdvance={(stage) => void advance(order, stage)} onEdit={() => { setSelectedId(order.id); setAction("edit"); }} onDelete={() => { setSelectedId(order.id); setAction("delete"); }} onCancel={() => { setSelectedId(order.id); setAction("cancel"); }}/>) }
       </div>
       {!filtered.length && <div className="py-16 text-center"><PackageCheck className="mx-auto text-[#3f4a54]" size={28}/><p className="mt-3 text-[11px] font-semibold text-[#a0aab3]">Bu filtrelerde sipariş yok</p><p className="mt-1 text-[9px] text-[#66717c]">Durum, tarih veya arama filtresini değiştirebilirsiniz.</p></div>}
     </div>
@@ -156,11 +158,13 @@ function SummaryCard({ label, value, icon: Icon, color }: { label: string; value
   return <div className="panel flex items-center gap-3 rounded-2xl p-4"><span className="grid h-9 w-9 place-items-center rounded-xl" style={{ background: `${color}16`, color }}><Icon size={16}/></span><div><p className="text-[9px] text-[#707b85]">{label}</p><p className="mt-0.5 text-[18px] font-semibold">{value}</p></div></div>;
 }
 
-function OrderCard({ order, store, submitting, onAdvance, onCancel, onEdit, onDelete }: { order: Order; store: Store; submitting: boolean; onAdvance: (stage: Exclude<OrderStage, "new">) => void; onCancel: () => void; onEdit: () => void; onDelete: () => void }) {
+function OrderCard({ order, store, products, submitting, onAdvance, onCancel, onEdit, onDelete }: { order: Order; store: Store; products: Product[]; submitting: boolean; onAdvance: (stage: Exclude<OrderStage, "new">) => void; onCancel: () => void; onEdit: () => void; onDelete: () => void }) {
   const currentIndex = stageOrder.indexOf(order.stage);
+  const costs = calculateOrderProfitability(store, order, products);
   const progress = order.status === "cancelled" ? 0 : (currentIndex / (stageOrder.length - 1)) * 100;
   return <article className="rounded-2xl border border-[#27313a] bg-[#10161c] p-4">
     <div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-start gap-3"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#1a2828] text-[#6bd9cc]"><UserRound size={16}/></span><div className="min-w-0"><p className="truncate text-[11px] font-semibold">{order.customerName}</p><p className="mt-1 break-words text-[9px] leading-4 text-[#78838d]">{orderProductLabel(order)}</p><p className="mt-1.5 flex items-center gap-1 text-[7px] text-[#59656f]"><CalendarDays size={9}/>{new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short", year: "numeric" }).format(new Date(order.createdAt))}</p></div></div><div className="text-right"><p className="text-[12px] font-bold text-[#e7ecef]">{money(order.amount, store.currency)}</p><StatusBadge status={order.status}/></div></div>
+    {order.status !== "cancelled" && <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 rounded-xl bg-[#101f18] p-3 text-[10px] text-[#9eb8a7]"><span>Kargo dahil maliyet: <strong className="text-[#c2dfcb]">{costs.totalCost === null ? "Alış fiyatı / ürün bilgisi eksik" : reportMoney(costs.totalCost, store.currency)}</strong></span><span>Başa baş ROAS: <strong className="text-[#e5c28b]">{costs.breakEven === null ? "—" : `${costs.breakEven.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x`}</strong></span>{store.currency === "AZN" && <span>Sipariş başına 4 ₼ kargo dahil</span>}</div>}
     <div className="my-4 h-1 overflow-hidden rounded-full bg-[#222b33]"><div className={`h-full rounded-full ${order.status === "cancelled" ? "bg-[#ff7468]" : "bg-[#2dd4bf]"}`} style={{ width: `${progress}%` }}/></div>
     <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-4">
       {steps.map(({ stage, title, description, icon: Icon }, index) => {
