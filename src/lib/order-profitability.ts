@@ -32,11 +32,12 @@ export function calculateOrderProfitability(store: Store, order: Order, products
   if (!Number.isSafeInteger(purchase) || !Number.isSafeInteger(units)) missingProducts.add("Ürün adet veya maliyetini kontrol edin");
   const purchaseCost = missingProducts.size ? null : purchase / 100;
   const shippingCost = orderShippingCost(store, order);
-  const total = purchaseCost === null || shippingCost === null ? null : purchase + moneyCents(shippingCost);
+  const packagingCost = store.currency === "AZN" ? 1 : 0;
+  const total = purchaseCost === null || shippingCost === null ? null : purchase + moneyCents(shippingCost) + moneyCents(packagingCost);
   const totalCost = total === null || !Number.isSafeInteger(total) ? null : total / 100;
   const contribution = totalCost === null || !validMoney(revenue) ? null : (moneyCents(revenue) - moneyCents(totalCost)) / 100;
   return {
-    units: missingProducts.size ? null : units, purchaseCost, shippingCost, totalCost, contribution,
+    units: missingProducts.size ? null : units, purchaseCost, shippingCost, packagingCost, totalCost, contribution,
     breakEven: totalCost === null ? null : breakEvenRoas(revenue, totalCost),
     missingProducts: [...missingProducts], missingShipping: shippingCost === null,
   };

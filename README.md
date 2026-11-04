@@ -95,19 +95,19 @@ Finans raporu teslim edilen siparişlerin finans kayıtlarını ve manuel gelir/
 
 ## Mağaza bazında ROAS ve ürün kârı
 
-**Ürünler ve stok** bölümünde her ürüne satış fiyatının yanında **alış fiyatı** girilir. Alış fiyatına kargo eklenmez. Yeni ürünlerde alış fiyatı zorunludur; eski ürünler düzenlenerek tamamlanabilir. Sıfır maliyet açıkça girilebilir, boş alış fiyatı sıfır kabul edilmez.
+**Ürünler ve stok** bölümünde her ürüne satış fiyatının yanında **alış fiyatı** girilir. Alış fiyatına kargo ve paket eklenmez. Yeni ürünlerde alış fiyatı zorunludur; eski ürünler düzenlenerek tamamlanabilir. Sıfır maliyet açıkça girilebilir, boş alış fiyatı sıfır kabul edilmez.
 
 Ana sayfadaki **ROAS ve ürün kârı** düğmesi ayrı bir pencere açar. Ayarlardan her mağazanın reklam gideri kategorileri ve satış geliri kaynağı seçilir. Eski ortalama satış fiyatı / maliyet oranı ve paket kargo indirimi artık kullanılmaz.
 
 - Gelir kaynağı varsayılan olarak **Sipariş gelirleri** kategorisidir. Yalnızca seçili dönemin seçili finans kayıtları gelir sayılır; sipariş tutarları ayrıca eklenmez.
 - Her gelir, bağlı olduğu tamamlanmış siparişin ürünlerine eşlenir. **Alış maliyeti = her ürünün stoktaki güncel alış fiyatı × siparişteki adedi**. Aynı veya farklı ürünlerden oluşan paketler desteklenir. Alış fiyatı siparişe kopyalanmaz; stok ekranında fiyat değiştirildiğinde geçmiş siparişlerin hesabı da güncellenir.
-- **AZN siparişlerinde sipariş başına bir kez 4 ₼ kargo** eklenir. Ürün sayısı kargo tutarını artırmaz veya maliyetten indirim oluşturmaz. Yeni AZN siparişlerinin kayıtlı kargo tutarı da varsayılan 4 ₼ olur. Diğer para birimlerinde siparişte kayıtlı kargo kullanılır; 4 AZN başka para birimine dönüşümsüz uygulanmaz.
-- Bir siparişin seçili dönemde birden fazla gelir kaydı varsa gelirleri toplanır, ürün maliyeti ve kargo bir kez sayılır. Aynı finans kaydının tekrarları gelir veya maliyeti çoğaltmaz.
+- **AZN siparişlerinde sipariş başına bir kez 4 ₼ kargo + 1 ₼ paket** eklenir. Ürün sayısı kargo tutarını artırmaz veya maliyetten indirim oluşturmaz. Yeni AZN siparişlerinin kayıtlı kargo tutarı da varsayılan 4 ₼ olur. Diğer para birimlerinde siparişte kayıtlı kargo kullanılır; 4 AZN başka para birimine dönüşümsüz uygulanmaz.
+- Bir siparişin seçili dönemde birden fazla gelir kaydı varsa gelirleri toplanır, ürün maliyeti, kargo ve paket bir kez sayılır. Aynı finans kaydının tekrarları gelir veya maliyeti çoğaltmaz.
 - **ROAS = seçili satış geliri / seçili reklam gideri**. Reklam gideri yoksa oran gösterilmez.
-- **Ürün kârı = gelir − satılan ürünlerin alış maliyeti − sipariş kargosu − reklam**. Stok alımları, domain, paket, iptal kargoları ve diğer giderler bu bölüme eklenmez. Ayrı kargo gider kayıtları ikinci kez düşülmez.
-- **Sipariş başa baş ROAS = sipariş geliri / (sipariş geliri − alış maliyeti − kargo)**. Toplam başa baş ROAS da toplam gelir ve toplam katkıyla hesaplanır; sipariş oranlarının aritmetik ortalaması değildir. Katkı sıfır veya negatifse sonlu bir eşik gösterilmez.
+- **Ürün kârı = gelir − satılan ürünlerin alış maliyeti − sipariş kargosu − paket − reklam**. Stok alımları, domain, toplu paket alımları, iptal kargoları ve diğer giderler bu bölüme eklenmez. Ayrı kargo gider kayıtları ikinci kez düşülmez.
+- **Sipariş başa baş ROAS = sipariş geliri / (sipariş geliri − alış maliyeti − kargo − paket)**. Toplam başa baş ROAS da toplam gelir ve toplam katkıyla hesaplanır; sipariş oranlarının aritmetik ortalaması değildir. Katkı sıfır veya negatifse sonlu bir eşik gösterilmez.
 - Alış fiyatı, ürün/adet bağlantısı veya gerekli kargo bilgisi eksikse ya da gelir tamamlanmış bir siparişe bağlı değilse ROAS hesaplanabilir; kâr ve başa baş ROAS eksikler tamamlanana kadar gösterilmez. Eksik kayıtlar pencerede belirtilir.
 
-Pencerede seçili tarih aralığı, ROAS, başa baş eşiği, ürün kârı ve maliyetlerin dökümü bulunur. **Sipariş bazında maliyet ve başa baş ROAS** bölümü her siparişin gelirini, ürün maliyetini, kargosunu ve reklam öncesi katkısını gösterir. Reklam yalnızca dönem toplamından düşülür. Sipariş kartlarında da kargo dahil maliyet ve başa baş ROAS bulunur.
+Pencerede seçili tarih aralığı, ROAS, başa baş eşiği, ürün kârı ve maliyetlerin dökümü bulunur. **Sipariş bazında maliyet ve başa baş ROAS** bölümü her siparişin gelirini, ürün maliyetini, kargosunu, paket giderini ve reklam öncesi katkısını gösterir. Reklam yalnızca dönem toplamından düşülür. Sipariş kartlarında da kargo ve paket dahil maliyet ve başa baş ROAS bulunur.
 
 Ana sayfadaki gider dağılımı kartında **Gider dağılımı / ROAS** düğmeleri bulunur. Küçük ve büyük ROAS görünümü aynı hesaplama fonksiyonunu ve ana sayfanın dönem filtresini kullanır. Tüm mağazaların karşılaştırması büyük pencerenin içindedir. Genel gelir-gider raporları kayıtlı finans işlemlerini kullanmaya devam eder; geçmiş işlem ve sipariş kayıtları yeniden yazılmaz.

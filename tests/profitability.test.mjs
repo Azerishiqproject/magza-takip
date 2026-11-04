@@ -41,25 +41,25 @@ const order = (id, items = [["main", 1], ["corner", 1], ["sock", 1]], extra = {}
 const sale = (id, amount = 40, extra = {}) => tx(`order-income-${id}`, "sales", "income", amount, { orderId: id, ...extra });
 const calculateBundle = () => calculate(store, categories, [sale("o1"), tx("ad", "ads", "expense", 10)], [order("o1")], products);
 
-test("40 AZN mixed bundle costs 14 AZN, never 7.48: product costs plus one shipping fee", () => {
+test("40 AZN mixed bundle costs 15 AZN: products plus one shipping and packaging fee", () => {
   const r = calculateBundle();
-  assert.equal(r.revenue, 40); assert.equal(r.purchaseCost, 10); assert.equal(r.shippingCost, 4); assert.equal(r.productCost, 14);
-  assert.equal(r.profit, 16); assert.equal(r.roas, 4); assert.equal(r.breakEven, 40 / 26);
+  assert.equal(r.revenue, 40); assert.equal(r.purchaseCost, 10); assert.equal(r.shippingCost, 4); assert.equal(r.packagingCost, 1); assert.equal(r.productCost, 15);
+  assert.equal(r.profit, 15); assert.equal(r.roas, 4); assert.equal(r.breakEven, 40 / 25);
   assert.equal(r.orderCount, 1); assert.equal(r.soldUnits, 3); assert.equal(r.costComplete, true);
-  assert.equal(r.orderResults[0].contribution, 26); assert.equal(r.orderResults[0].breakEven, 40 / 26);
+  assert.equal(r.orderResults[0].contribution, 25); assert.equal(r.orderResults[0].breakEven, 40 / 25);
 });
 
-test("each package pays shipping once for one, two or six units", () => {
+test("each package pays shipping and packaging once for one, two or six units", () => {
   for (const quantity of [1, 2, 6]) {
     const r = orderCost(store, order("o1", [["main", quantity]], { amount: 30 * quantity }), products);
-    assert.equal(r.purchaseCost, 7 * quantity); assert.equal(r.shippingCost, 4); assert.equal(r.totalCost, 7 * quantity + 4);
+    assert.equal(r.purchaseCost, 7 * quantity); assert.equal(r.shippingCost, 4); assert.equal(r.packagingCost, 1); assert.equal(r.totalCost, 7 * quantity + 5);
   }
 });
 
 test("aggregate threshold uses total contribution rather than averaging order ratios", () => {
   const r = calculate(store, categories, [sale("o1"), sale("o2", 60), tx("ad", "ads", "expense", 20)], [order("o1"), order("o2", [["main", 2]], { amount: 60 })], products);
-  assert.equal(r.revenue, 100); assert.equal(r.purchaseCost, 24); assert.equal(r.shippingCost, 8); assert.equal(r.productCost, 32);
-  assert.equal(r.profit, 48); assert.equal(r.breakEven, 100 / 68); assert.equal(r.orderCount, 2); assert.equal(r.soldUnits, 5);
+  assert.equal(r.revenue, 100); assert.equal(r.purchaseCost, 24); assert.equal(r.shippingCost, 8); assert.equal(r.packagingCost, 2); assert.equal(r.productCost, 34);
+  assert.equal(r.profit, 46); assert.equal(r.breakEven, 100 / 66); assert.equal(r.orderCount, 2); assert.equal(r.soldUnits, 5);
 });
 
 test("changing stock purchase price recalculates historical orders without changing revenue or stored orders", () => {
@@ -75,7 +75,7 @@ test("changing stock purchase price recalculates historical orders without chang
 
 test("purchase cost always comes from stock even if a legacy record has its own cost", () => {
   const o = order("o1"); o.items.forEach(i => { i.unitCost = 999; }); o.unitCost = 999;
-  assert.equal(orderCost(store, o, products).totalCost, 14);
+  assert.equal(orderCost(store, o, products).totalCost, 15);
 });
 
 test("legacy average sale and cost settings no longer influence the calculation", () => {
@@ -90,7 +90,7 @@ test("sale price edits affect neither historical revenue nor purchase cost", () 
 
 test("only selected financial income supplies revenue, even when order amount differs", () => {
   const r = calculate(store, categories, [sale("o1", 45), tx("other-income", "other", "income", 900, { orderId: "o1" })], [order("o1", undefined, { amount: 999 })], products);
-  assert.equal(r.revenue, 45); assert.equal(r.productCost, 14); assert.equal(r.profit, 31); assert.equal(r.orderCount, 1);
+  assert.equal(r.revenue, 45); assert.equal(r.productCost, 15); assert.equal(r.profit, 30); assert.equal(r.orderCount, 1);
 });
 
 test("unselected income cannot cause product costs to be charged", () => {
@@ -107,18 +107,18 @@ test("unrelated expenses, stock purchases and recorded cargo are not charged aga
 test("advertising is chosen by category ID regardless of its name", () => {
   const cats = categories.map(c => c.id === "ads" ? { ...c, name: "Seçilen gider" } : c);
   const r = calculate(store, cats, [sale("o1"), tx("ad", "ads", "expense", 10), tx("other-ad", "ads2", "expense", 500)], [order("o1")], products);
-  assert.equal(r.adSpend, 10); assert.equal(r.roas, 4); assert.equal(r.profit, 16);
+  assert.equal(r.adSpend, 10); assert.equal(r.roas, 4); assert.equal(r.profit, 15);
 });
 
 test("additional receipts for the same order charge the package only once", () => {
   const r = calculate(store, categories, [sale("o1", 35), tx("extra", "sales", "income", 5, { orderId: "o1" })], [order("o1")], products);
-  assert.equal(r.revenue, 40); assert.equal(r.productCost, 14); assert.equal(r.shippingCost, 4); assert.equal(r.saleRecords, 2); assert.equal(r.orderCount, 1);
+  assert.equal(r.revenue, 40); assert.equal(r.productCost, 15); assert.equal(r.shippingCost, 4); assert.equal(r.packagingCost, 1); assert.equal(r.saleRecords, 2); assert.equal(r.orderCount, 1);
 });
 
 test("duplicate snapshots cannot duplicate revenue, costs or shipping", () => {
   const s = sale("o1");
   const r = calculate(store, categories, [s, s], [order("o1"), order("o1")], products);
-  assert.equal(r.revenue, 40); assert.equal(r.productCost, 14); assert.equal(r.saleRecords, 1); assert.equal(r.orderCount, 1);
+  assert.equal(r.revenue, 40); assert.equal(r.productCost, 15); assert.equal(r.saleRecords, 1); assert.equal(r.orderCount, 1);
 });
 
 test("missing purchase prices suppress profit instead of treating unknown costs as zero", () => {
@@ -129,7 +129,7 @@ test("missing purchase prices suppress profit instead of treating unknown costs 
 
 test("zero purchase prices are valid and shipping is still charged", () => {
   const r = orderCost(store, order("o1"), products.map(p => ({ ...p, purchasePrice: 0 })));
-  assert.equal(r.purchaseCost, 0); assert.equal(r.totalCost, 4); assert.equal(r.breakEven, 40 / 36);
+  assert.equal(r.purchaseCost, 0); assert.equal(r.totalCost, 5); assert.equal(r.breakEven, 40 / 35);
 });
 
 test("deleted products, foreign store products and invalid quantities cannot create profit", () => {
@@ -147,7 +147,7 @@ test("invalid purchase prices are unknown; they cannot produce a negative or fra
 test("legacy linked single-product orders use their explicit quantity or one by default", () => {
   for (const quantity of [undefined, 2]) {
     const o = order("o1", [], { items: undefined, productId: "main", quantity });
-    assert.equal(orderCost(store, o, products).totalCost, 7 * (quantity ?? 1) + 4);
+    assert.equal(orderCost(store, o, products).totalCost, 7 * (quantity ?? 1) + 5);
   }
   assert.equal(orderCost(store, order("o1", [], { items: undefined, productId: null }), products).totalCost, null);
 });
@@ -166,27 +166,27 @@ test("active, cancelled and foreign orders cannot supply costs for completed sal
 
 test("financial period determines which order's cost is included", () => {
   const included = calculate(store, categories, [sale("o1", 40, { date: "2026-11-04" })], [order("o1")], products);
-  assert.equal(included.productCost, 14);
+  assert.equal(included.productCost, 15);
   const empty = calculate(store, categories, [], [order("o1")], products);
-  assert.equal(empty.revenue, 0); assert.equal(empty.productCost, 0); assert.equal(empty.shippingCost, 0); assert.equal(empty.orderCount, 0);
+  assert.equal(empty.revenue, 0); assert.equal(empty.productCost, 0); assert.equal(empty.shippingCost, 0); assert.equal(empty.packagingCost, 0); assert.equal(empty.orderCount, 0);
 });
 
 test("no advertising spend yields no ROAS; ads without sales show the loss", () => {
   const noAds = calculate(store, categories, [sale("o1")], [order("o1")], products);
-  assert.equal(noAds.roas, null); assert.equal(noAds.profit, 26);
+  assert.equal(noAds.roas, null); assert.equal(noAds.profit, 25);
   const noSales = calculate(store, categories, [tx("ad", "ads", "expense", 10)], [order("o1")], products);
   assert.equal(noSales.roas, 0); assert.equal(noSales.profit, -10); assert.equal(noSales.breakEven, null);
 });
 
 test("losing bundles retain their full cost instead of capping it to revenue", () => {
   const r = calculate(store, categories, [sale("o1", 1)], [order("o1", undefined, { amount: 1 })], products);
-  assert.equal(r.productCost, 14); assert.equal(r.profit, -13); assert.equal(r.breakEven, null); assert.equal(r.noContribution, true);
+  assert.equal(r.productCost, 15); assert.equal(r.profit, -14); assert.equal(r.breakEven, null); assert.equal(r.noContribution, true);
 });
 
 test("currencies are isolated and 4 AZN is not silently converted to USD, EUR or TRY", () => {
   for (const currency of ["USD", "EUR", "TRY"]) {
     const r = orderCost({ ...store, currency }, order("o1", undefined, { shippingCost: 2.5 }), products);
-    assert.equal(r.shippingCost, 2.5); assert.equal(r.totalCost, 12.5);
+    assert.equal(r.shippingCost, 2.5); assert.equal(r.packagingCost, 0); assert.equal(r.totalCost, 12.5);
     assert.equal(orderCost({ ...store, currency }, order("o1", undefined, { shippingCost: undefined }), products).totalCost, null);
   }
   const r = calculate(store, categories, [sale("o1"), tx("foreign", "sales", "income", 999, { storeId: "s2" })], [order("o1")], products);
@@ -201,7 +201,7 @@ test("invalid dates and amounts are excluded from revenue and advertising", () =
 test("integer cents avoid rounding drift in multi-item costs", () => {
   const ps = [{ ...products[0], purchasePrice: 0.1 }, { ...products[1], purchasePrice: 0.2 }];
   const r = orderCost(store, order("o1", [["main", 3], ["corner", 3]]), ps);
-  assert.equal(r.purchaseCost, 0.9); assert.equal(r.totalCost, 4.9);
+  assert.equal(r.purchaseCost, 0.9); assert.equal(r.totalCost, 5.9);
 });
 
 test("settings require category choices but no longer require average prices", () => {
@@ -213,7 +213,7 @@ test("settings require category choices but no longer require average prices", (
 
 test("newly created order income categories remain available after setup", () => {
   const r = calculate({ ...store, profitSettings: { ...settings, salesCategoryIds: [] } }, categories, [sale("o1")], [order("o1")], products);
-  assert.equal(r.revenue, 40); assert.equal(r.productCost, 14); assert.equal(r.noSalesCategory, false);
+  assert.equal(r.revenue, 40); assert.equal(r.productCost, 15); assert.equal(r.noSalesCategory, false);
 });
 
 test("missing/retyped source categories cannot silently supply ROAS or profit", () => {
@@ -226,4 +226,21 @@ test("missing/retyped source categories cannot silently supply ROAS or profit", 
 test("break even requires positive contribution", () => {
   assert.equal(breakEvenRoas(40, 14), 40 / 26); assert.equal(breakEvenRoas(30, 11), 30 / 19);
   assert.equal(breakEvenRoas(10, 10), null); assert.equal(breakEvenRoas(10, 11), null); assert.equal(breakEvenRoas(0, 0), null);
+});
+
+test("packaging is charged once per completed order, including duplicate receipts and mixed bundles", () => {
+  const s = sale("o1", 30);
+  const r = calculate(store, categories, [s, s, tx("extra", "sales", "income", 10, { orderId: "o1" }), sale("o2", 60)], [order("o1"), order("o2", [["main", 2]])], products);
+  assert.equal(r.packagingCost, 2); assert.equal(r.orderCount, 2);
+  assert.equal(r.shippingCost, 8); assert.equal(r.productCost, 34); assert.equal(r.profit, 66);
+  assert.equal(r.orderResults[0].packagingCost, 1); assert.equal(r.orderResults[1].packagingCost, 1);
+});
+
+test("packaging does not add income, change advertising ROAS or modify orders and ledger entries", () => {
+  const o = order("o1"); const records = [sale("o1"), tx("ad", "ads", "expense", 10), tx("packet-purchase", "fees", "expense", 100)];
+  const before = JSON.stringify([o, records]);
+  const r = calculate(store, categories, records, [o], products);
+  assert.equal(r.revenue, 40); assert.equal(r.adSpend, 10); assert.equal(r.roas, 4);
+  assert.equal(r.packagingCost, 1); assert.equal(r.profit, 15); assert.equal(r.breakEven, 1.6);
+  assert.equal(JSON.stringify([o, records]), before);
 });

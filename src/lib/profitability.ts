@@ -25,7 +25,7 @@ export function validateProfitSettings(settings: ProfitSettings, storeId: string
 export type Profitability = ReturnType<typeof calculateProfitability>;
 
 // Revenue comes only from selected financial records. Link each receipt to its
-// completed order, charging product quantities and one shipping fee per package.
+// completed order, charging products, shipping and packaging once per package.
 export function calculateProfitability(store: Store, categories: Category[], transactions: Transaction[], orders: Order[] = [], products: Product[] = []) {
   const roles = store.profitSettings ?? suggestedProfitCategories(store.id, categories);
   const categoryMap = new Map(categories.filter((c) => c.storeId === store.id).map((c) => [c.id, c]));
@@ -55,12 +55,14 @@ export function calculateProfitability(store: Store, categories: Category[], tra
   const costComplete = unmatchedRecords === 0 && missingCostOrders === 0;
   const purchase = costComplete ? orderResults.reduce((sum, o) => sum + cents(o.purchaseCost!), 0) : null;
   const shipping = costComplete ? orderResults.reduce((sum, o) => sum + cents(o.shippingCost!), 0) : null;
-  const cost = purchase === null || shipping === null ? null : purchase + shipping;
+  const packaging = costComplete ? orderResults.reduce((sum, o) => sum + cents(o.packagingCost), 0) : null;
+  const cost = purchase === null || shipping === null || packaging === null ? null : purchase + shipping + packaging;
   const contribution = cost === null ? null : revenue - cost;
   return {
     revenue: revenue / 100, adSpend: adSpend / 100,
     purchaseCost: purchase === null ? null : purchase / 100,
     shippingCost: shipping === null ? null : shipping / 100,
+    packagingCost: packaging === null ? null : packaging / 100,
     productCost: cost === null ? null : cost / 100,
     profit: contribution === null || !advertisingIds.length ? null : (contribution - adSpend) / 100,
     roas: adSpend > 0 ? revenue / adSpend : null,
