@@ -641,3 +641,16 @@ test("explicit common-cost source persists as a store reference without moving s
   assert.deepEqual([result.orders, result.transactions, result.products], previous);
   assert.ok(app.commits.flat().every(op => op.reference.path === "stores/s1"));
 });
+
+test("legacy variant group mappings only persist product references and leave stock and ledger intact", async () => {
+  const app = harness();
+  const categories = [{ id: "sales", storeId: "s1", type: "income", name: "Satış" }, { id: "ads", storeId: "s1", type: "expense", name: "Reklam" }];
+  const data = app.online({ categories, products: [baseProduct, { ...baseProduct, id: "p2", name: "Büyük beden" }, { ...baseProduct, id: "cream", name: "Maz", purchasePrice: 1.5 }] });
+  const previous = structuredClone([data.orders, data.transactions, data.products]);
+  const profitSettings = { advertisingCategoryIds: ["ads"], salesCategoryIds: ["sales"], costMappings: { "order:o1": { items: [{ productIds: ["p1", "p2"], quantity: 2 }], packageCount: 1 } } };
+  await data.updateStore("s1", { profitSettings });
+  assert.deepEqual(app.cloud.get("stores/s1").profitSettings.costMappings, profitSettings.costMappings);
+  const result = app.render();
+  assert.deepEqual([result.orders, result.transactions, result.products], previous);
+  assert.ok(app.commits.flat().every(op => op.reference.path === "stores/s1"));
+});

@@ -20,7 +20,8 @@ export interface ProfitSettings {
   costMappings?: Record<string, LegacyCostMapping>;
 }
 
-export type CostMappingItem = OrderItemInput | { sourceStoreId: string; quantity: number };
+// productIds are alternative variants with a shared unit cost, not bundled items.
+export type CostMappingItem = OrderItemInput | { sourceStoreId: string; quantity: number } | { productIds: string[]; sourceStoreId?: string; quantity: number };
 export type LegacyCostMapping = { items: CostMappingItem[]; packageCount: number } | { excluded: true };
 
 export interface StoreFolder {

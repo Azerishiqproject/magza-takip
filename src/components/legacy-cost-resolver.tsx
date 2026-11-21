@@ -9,6 +9,8 @@ import { commonLegacyPurchasePrice } from "@/lib/legacy-sales";
 import { validMoney } from "@/lib/order-profitability";
 import { Field } from "./modal";
 
+const itemKey = (item: CostMappingItem, storeId: string) => "productId" in item ? item.productId ? `product:${item.productId}` : "" : "productIds" in item ? `group:${item.sourceStoreId ?? storeId}:${[...item.productIds].sort().join(",")}` : `store:${item.sourceStoreId}`;
+
 type Props = { stores: Store[]; store: Store; products: Product[]; issues: Profitability["costIssues"]; onSave: (settings: ProfitSettings) => Promise<{ persisted: boolean }> };
 
 export function LegacyCostResolver({ store, stores, products, issues, onSave }: Props) {
@@ -17,7 +19,7 @@ export function LegacyCostResolver({ store, stores, products, issues, onSave }: 
   if (!issue) return null;
   return <details className="mb-4 mt-3 rounded-xl border border-[#715530] p-3 text-xs leading-6 text-[#d9bd94]">
     <summary className="cursor-pointer font-semibold">Eski kayıt eşleştirmeleri ({issues.length})</summary>
-    <p className="mt-2 text-[11px] leading-5">Ürünü, adedi ve kaç ayrı paket gönderildiğini seçin. Alış fiyatı stoktan alınır. Başka mağazanın aynı maliyetli ürünleri için ortak alış fiyatı seçilebilir; para birimleri aynı olmalıdır. Bu eşleştirmeler yalnızca ROAS hesabında kullanılır.</p>
+    <p className="mt-2 text-[11px] leading-5">Ürünü, adedi ve kaç ayrı paket gönderildiğini seçin. Alış fiyatı stoktan alınır. Bedeni belirtilmeyen eski satışlarda aynı alış fiyatındaki ürünler birlikte seçilebilir. Yalnızca seçilen ürünlerin güncel maliyeti kullanılır. Başka mağazadan seçimde para birimleri aynı olmalıdır. Bu eşleştirmeler yalnızca ROAS hesabında kullanılır.</p>
     <div className="mt-3"><Field label="Düzeltilecek kayıt"><select value={issue.sourceKey} onChange={(e) => setSelected(e.target.value)} className="input">{issues.map((i) => <option key={i.sourceKey} value={i.sourceKey}>{i.kind === "order" ? "Sipariş" : "Manuel gelir"} · {i.date} · {i.label} · {i.revenue} {store.currency}</option>)}</select></Field></div>
     <LegacyMappingEditor key={issue.sourceKey} issue={issue} store={store} stores={stores} products={products} onSave={onSave}/>
   </details>;
@@ -25,9 +27,28 @@ export function LegacyCostResolver({ store, stores, products, issues, onSave }: 
 
 function LegacyMappingEditor({ issue, store, stores, products, onSave }: Omit<Props, "issues"> & { issue: Profitability["costIssues"][number] }) {
   const ownProducts = products.filter((p) => p.storeId === store.id);
-  const costSources = stores.filter((s) => s.id !== store.id && s.currency === store.currency && validMoney(commonLegacyPurchasePrice(s, products)));
   const saved = store.profitSettings?.costMappings?.[issue.sourceKey];
   const [items, setItems] = useState<CostMappingItem[]>(saved && "items" in saved ? saved.items.map((i) => ({ ...i })) : [{ productId: ownProducts.length === 1 ? ownProducts[0].id : "", quantity: issue.suggestedQuantity ?? 1 }]);
+  const choices: { value: string; label: string; item: CostMappingItem }[] = ownProducts.map((p) => ({ value: `product:${p.id}`, label: p.name, item: { productId: p.id, quantity: 1 } }));
+  for (const source of stores.filter((s) => s.currency === store.currency)) {
+    const own = source.id === store.id;
+    const groups = new Map<number, Product[]>();
+    for (const product of products.filter((p) => p.storeId === source.id && validMoney(p.purchasePrice))) {
+      groups.set(product.purchasePrice!, [...(groups.get(product.purchasePrice!) ?? []), product]);
+    }
+    for (const [price, variants] of groups) if (variants.length > 1) {
+      const item: CostMappingItem = { productIds: variants.map((p) => p.id), quantity: 1, ...(!own ? { sourceStoreId: source.id } : {}) };
+      choices.push({ value: itemKey(item, store.id), label: `${own ? "" : `${source.name} · `}${variants.map((p) => p.name).join(" / ")} · ortak alış fiyatı (${price} ${source.currency})`, item });
+    }
+    if (!own && validMoney(commonLegacyPurchasePrice(source, products))) choices.push({ value: `store:${source.id}`, label: `${source.name} · tüm ürünlerin ortak alış fiyatı (${commonLegacyPurchasePrice(source, products)} ${source.currency})`, item: { sourceStoreId: source.id, quantity: 1 } });
+  }
+  // Retain the exact saved group even when a new equal-cost variant is added.
+  for (const item of items) if (itemKey(item, store.id) && !choices.some((c) => c.value === itemKey(item, store.id))) {
+    const source = "sourceStoreId" in item ? stores.find((s) => s.id === item.sourceStoreId) : store;
+    const price = source && "productIds" in item ? commonLegacyPurchasePrice(source, products, item.productIds) : undefined;
+    const name = "productIds" in item ? item.productIds.map((id) => products.find((p) => p.id === id)?.name ?? "Silinmiş ürün").join(" / ") : "productId" in item ? "Silinmiş ürün" : source?.name ?? "Silinmiş mağaza";
+    choices.push({ value: itemKey(item, store.id), label: `${name} · ${source?.currency === store.currency && validMoney(price) ? `ortak alış fiyatı (${price} ${store.currency})` : "alış fiyatlarını kontrol edin"}`, item });
+  }
   const [packages, setPackages] = useState(String(saved && "items" in saved ? saved.packageCount : issue.suggestedPackages));
   const [excluded, setExcluded] = useState(Boolean(saved && "excluded" in saved));
   const [saving, setSaving] = useState(false);
@@ -41,7 +62,7 @@ function LegacyMappingEditor({ issue, store, stores, products, onSave }: Omit<Pr
   }}>
     {issue.kind === "income" && <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={excluded} disabled={saving} onChange={(e) => setExcluded(e.target.checked)}/>Satış değil · ROAS hesabının dışında tut</label>}
     {!excluded && <>
-      {items.map((item, index) => <div key={index} className="flex items-end gap-2"><div className="min-w-0 flex-1"><Field label={`Ürün ${index + 1}`}><select required disabled={saving} value={"productId" in item ? item.productId ? `product:${item.productId}` : "" : `store:${item.sourceStoreId}`} onChange={(e) => setItems(items.map((i, n) => n === index ? e.target.value.startsWith("store:") ? { sourceStoreId: e.target.value.slice(6), quantity: i.quantity } : { productId: e.target.value.slice(8), quantity: i.quantity } : i))} className="input"><option value="">Ürün seçin</option>{ownProducts.map((p) => <option key={p.id} value={`product:${p.id}`}>{p.name}</option>)}{costSources.map((s) => <option key={s.id} value={`store:${s.id}`}>{s.name} · ortak alış fiyatı ({commonLegacyPurchasePrice(s, products)} {s.currency})</option>)}</select></Field></div><div className="w-24"><Field label={`Adet ${index + 1}`}><input required disabled={saving} type="number" min="1" step="1" value={item.quantity || ""} onChange={(e) => setItems(items.map((i, n) => n === index ? { ...i, quantity: Number(e.target.value) } : i))} className="input"/></Field></div>{items.length > 1 && <button type="button" disabled={saving} onClick={() => setItems(items.filter((_, n) => n !== index))} aria-label={`Ürün ${index + 1} satırını kaldır`} className="mb-1 rounded-lg p-2"><X size={14}/></button>}</div>)}
+      {items.map((item, index) => <div key={index} className="flex items-end gap-2"><div className="min-w-0 flex-1"><Field label={`Ürün ${index + 1}`}><select required disabled={saving} value={itemKey(item, store.id)} onChange={(e) => setItems(items.map((i, n) => n === index ? { ...(choices.find((c) => c.value === e.target.value)?.item ?? { productId: "" }), quantity: i.quantity } : i))} className="input"><option value="">Ürün seçin</option>{choices.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}</select></Field></div><div className="w-24"><Field label={`Adet ${index + 1}`}><input required disabled={saving} type="number" min="1" step="1" value={item.quantity || ""} onChange={(e) => setItems(items.map((i, n) => n === index ? { ...i, quantity: Number(e.target.value) } : i))} className="input"/></Field></div>{items.length > 1 && <button type="button" disabled={saving} onClick={() => setItems(items.filter((_, n) => n !== index))} aria-label={`Ürün ${index + 1} satırını kaldır`} className="mb-1 rounded-lg p-2"><X size={14}/></button>}</div>)}
       <button type="button" disabled={saving} onClick={() => setItems([...items, { productId: "", quantity: 1 }])} className="flex items-center gap-1 text-xs font-semibold"><Plus size={13}/>Ürün ekle</button>
       <Field label="Ayrı gönderilen paket sayısı"><input required disabled={saving || issue.kind === "order"} type="number" min="1" step="1" value={packages} onChange={(e) => setPackages(e.target.value)} className="input"/></Field>
       <p className="text-[11px] leading-5">Aynı siparişteki ürünler birlikte gönderildiyse 1 paket seçin. Eski bir manuel kayıt birden fazla ayrı siparişi topluyorsa gönderilen paket sayısını girin.</p>

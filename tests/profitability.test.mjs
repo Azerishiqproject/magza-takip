@@ -378,3 +378,72 @@ test("a cost item cannot combine a product and a source store", () => {
   assert.throws(() => validateProfitSettings(profitSettings, store.id, categories, allProducts, [mapped, source]));
   assert.equal(orderCost(mapped, order("o1"), allProducts, 40, "order:o1", [mapped, source]).totalCost, null);
 });
+
+const kneeVariants = [
+  { id: "knee-2xl", storeId: "s1", name: "Dizlik 2 xl", purchasePrice: 10 },
+  { id: "knee-3xl", storeId: "s1", name: "3 xl dizlik", purchasePrice: 10 },
+];
+const cream = { id: "cream", storeId: "s1", name: "Agrı Mazı", purchasePrice: 1.5 };
+const kneeMapping = { items: [{ productIds: kneeVariants.map(p => p.id), quantity: 2 }], packageCount: 1 };
+const kneeStore = { ...store, profitSettings: { ...settings, costMappings: { "order:legacy": kneeMapping } } };
+
+test("selected legacy variants keep their common cost when a different product is added", () => {
+  const orders = [legacyOrder("2 eded dizlik", { amount: 64 })];
+  const records = [sale("legacy", 64), tx("ad", "ads", "expense", 10)];
+  const original = structuredClone({ orders, records, kneeVariants, kneeStore });
+  const before = calculate(kneeStore, categories, records, orders, kneeVariants);
+  const after = calculate(kneeStore, categories, records, orders, [...kneeVariants, cream]);
+  assert.deepEqual(after, before);
+  assert.equal(after.purchaseCost, 20); assert.equal(after.shippingCost, 4); assert.equal(after.packagingCost, 1);
+  assert.equal(after.soldUnits, 2); assert.equal(after.orderCount, 1); assert.equal(after.profit, 29); assert.equal(after.breakEven, 64 / 39);
+  assert.deepEqual({ orders, records, kneeVariants, kneeStore }, original);
+});
+
+test("variant group is a live cost reference and never an average or a bundle", () => {
+  const o = legacyOrder("2 eded");
+  const updated = kneeVariants.map(p => ({ ...p, purchasePrice: 12 }));
+  assert.equal(orderCost(kneeStore, o, updated).purchaseCost, 24);
+  for (const changed of [
+    [kneeVariants[0], { ...kneeVariants[1], purchasePrice: 12 }],
+    [kneeVariants[0]],
+    [{ ...kneeVariants[0], purchasePrice: undefined }, kneeVariants[1]],
+  ]) {
+    const result = calculate(kneeStore, categories, [sale("legacy", 64), tx("ad", "ads", "expense", 10)], [o], changed);
+    assert.equal(result.profit, null); assert.equal(result.breakEven, null); assert.equal(result.roas, 6.4);
+  }
+});
+
+test("manual legacy quantities use selected variants once per package without creating orders", () => {
+  const mapped = { ...store, profitSettings: { ...settings, costMappings: { "income:manual": kneeMapping } } };
+  const records = [tx("manual", "sales", "income", 64, { title: "2 eded" })];
+  const before = structuredClone(records);
+  const r = calculate(mapped, categories, records, [], [...kneeVariants, cream]);
+  assert.equal(r.purchaseCost, 20); assert.equal(r.soldUnits, 2); assert.equal(r.orderCount, 1); assert.equal(r.linkedOrderCount, 0); assert.equal(r.manualIncomeCount, 1);
+  assert.equal(r.profit, 39); assert.deepEqual(records, before);
+});
+
+test("variant group references reject duplicates, missing products, mixed owners and ambiguous shapes", () => {
+  const all = [...kneeVariants, { id: "foreign", storeId: "s2", purchasePrice: 10 }];
+  assert.doesNotThrow(() => validateProfitSettings(kneeStore.profitSettings, store.id, categories, all));
+  for (const item of [
+    { productIds: [], quantity: 1 }, { productIds: ["knee-2xl", "knee-2xl"], quantity: 1 },
+    { productIds: ["knee-2xl", "foreign"], quantity: 1 }, { productIds: ["missing"], quantity: 1 },
+    { productIds: ["knee-2xl"], productId: "knee-2xl", quantity: 1 },
+    { productIds: ["knee-2xl"], sourceStoreId: "s2", quantity: 1 },
+  ]) assert.throws(() => validateProfitSettings({ ...settings, costMappings: { "order:legacy": { items: [item], packageCount: 1 } } }, store.id, categories, all, [store, { id: "s2", currency: "AZN" }]));
+});
+
+test("explicit foreign variant group remains stable after its store adds another product", () => {
+  const source = { id: "s2", currency: "AZN" };
+  const sourceProducts = [...kneeVariants, cream].map(p => ({ ...p, storeId: source.id }));
+  const mapped = { ...store, profitSettings: { ...settings, costMappings: { "order:legacy": { items: [{ ...kneeMapping.items[0], sourceStoreId: source.id }], packageCount: 1 } } } };
+  assert.doesNotThrow(() => validateProfitSettings(mapped.profitSettings, store.id, categories, sourceProducts, [mapped, source]));
+  assert.equal(orderCost(mapped, legacyOrder("2 eded sibotes"), sourceProducts, 72, "order:legacy", [mapped, source]).purchaseCost, 20);
+  assert.equal(orderCost(mapped, legacyOrder("2 eded sibotes"), sourceProducts, 72, "order:legacy", [mapped, { ...source, currency: "USD" }]).totalCost, null);
+});
+
+test("new mixed knee and cream orders use actual items independently of legacy variant groups", () => {
+  const o = order("new", [["knee-2xl", 2], ["cream", 1]], { amount: 64 });
+  const r = calculate(kneeStore, categories, [sale("new", 64)], [o], [...kneeVariants, cream]);
+  assert.equal(r.purchaseCost, 21.5); assert.equal(r.shippingCost, 4); assert.equal(r.packagingCost, 1); assert.equal(r.soldUnits, 3); assert.equal(r.profit, 37.5);
+});

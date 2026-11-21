@@ -18,7 +18,7 @@ export function calculateOrderProfitability(store: Store, order: Order, products
   const productMap = new Map(products.filter((p) => p.storeId === store.id).map((p) => [p.id, p]));
   const mapping = store.profitSettings?.costMappings?.[sourceKey];
   const mapped = mapping && !("excluded" in mapping) && validCostMapping(mapping, products, store.id, stores) ? mapping : null;
-  const items = mapped ? mapped.items.map((item) => ({ ...item, product: "productId" in item ? productMap.get(item.productId)?.name ?? "Ürün" : `${stores.find((s) => s.id === item.sourceStoreId)?.name ?? "Mağaza"} ortak alış fiyatı` })) : getOrderItems(order);
+  const items = mapped ? mapped.items.map((item) => ({ ...item, product: "productId" in item ? productMap.get(item.productId)?.name ?? "Ürün" : "productIds" in item ? item.productIds.map((id) => products.find((p) => p.id === id)?.name ?? "Ürün").join(" / ") : `${stores.find((s) => s.id === item.sourceStoreId)?.name ?? "Mağaza"} ortak alış fiyatı` })) : getOrderItems(order);
   const missingProducts = new Set<string>();
   let purchase = 0, units = 0;
   let legacyResolved = false;
@@ -33,8 +33,8 @@ export function calculateOrderProfitability(store: Store, order: Order, products
   } else if (!Array.isArray(items) || !items.length) missingProducts.add(order.product || "Ürün bağlantısı eksik");
   else for (const item of items) {
     const product = "productId" in item ? productMap.get(item.productId) : undefined;
-    const source = "sourceStoreId" in item ? stores.find((s) => s.id === item.sourceStoreId) : undefined;
-    const cost = source && source.currency === store.currency ? commonLegacyPurchasePrice(source, products) : product?.purchasePrice;
+    const source = "sourceStoreId" in item ? stores.find((s) => s.id === item.sourceStoreId) : "productIds" in item ? store : undefined;
+    const cost = source && source.currency === store.currency ? commonLegacyPurchasePrice(source, products, "productIds" in item ? item.productIds : undefined) : product?.purchasePrice;
     if (!Number.isSafeInteger(item.quantity) || item.quantity <= 0 || !validMoney(cost)) {
       missingProducts.add(item.product || product?.name || "Ürün bilgisi eksik");
       continue;
@@ -52,6 +52,7 @@ export function calculateOrderProfitability(store: Store, order: Order, products
   const contribution = totalCost === null || !validMoney(revenue) ? null : (moneyCents(revenue) - moneyCents(totalCost)) / 100;
   return {
     units: missingProducts.size ? null : units, packageCount, purchaseCost, shippingCost, packagingCost, totalCost, contribution,
+    costSourceLabel: mapped ? items.map((item) => `${item.product} × ${item.quantity}`).join(" + ") : null,
     legacyResolved: (legacyResolved || Boolean(mapped)) && totalCost !== null,
     breakEven: totalCost === null ? null : breakEvenRoas(revenue, totalCost),
     missingProducts: [...missingProducts], missingShipping: shippingCost === null,

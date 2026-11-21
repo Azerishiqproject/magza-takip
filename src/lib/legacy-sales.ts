@@ -20,8 +20,9 @@ export function legacyPackageCount(label: string): number | null {
   return Number.isSafeInteger(count) && count > 0 ? count : null;
 }
 
-export function commonLegacyPurchasePrice(store: Store, products: Product[]): number | undefined {
-  const own = products.filter((p) => p.storeId === store.id);
+export function commonLegacyPurchasePrice(store: Store, products: Product[], productIds?: string[]): number | undefined {
+  const own = products.filter((p) => p.storeId === store.id && (!productIds || productIds.includes(p.id)));
+  if (productIds && (new Set(productIds).size !== productIds.length || own.length !== productIds.length)) return undefined;
   if (!own.length || own.some((p) => p.purchasePrice === undefined || p.purchasePrice !== own[0].purchasePrice)) return undefined;
   // Equal-cost variants can be costed without inventing a historical SKU or
   // changing inventory. The caller still validates money and explicit quantity.
@@ -34,14 +35,19 @@ export function validCostMapping(mapping: LegacyCostMapping, products: Product[]
   if (!Number.isSafeInteger(mapping.packageCount) || mapping.packageCount <= 0 || !Array.isArray(mapping.items) || !mapping.items.length) return false;
   let units = 0;
   for (const item of mapping.items) {
-    if (!item || typeof item !== "object" || ("productId" in item && "sourceStoreId" in item) || !Number.isSafeInteger(item.quantity) || item.quantity <= 0) return false;
+    if (!item || typeof item !== "object" || !Number.isSafeInteger(item.quantity) || item.quantity <= 0) return false;
     if ("productId" in item) {
-      if (!products.some((p) => p.id === item.productId && p.storeId === storeId)) return false;
-    } else if ("sourceStoreId" in item) {
-      const own = stores.find((s) => s.id === storeId);
-      const source = stores.find((s) => s.id === item.sourceStoreId);
-      if (!own || !source || own.currency !== source.currency || source.id === storeId) return false;
-    } else return false;
+      if ("sourceStoreId" in item || "productIds" in item || !products.some((p) => p.id === item.productId && p.storeId === storeId)) return false;
+    } else {
+      let sourceId = storeId;
+      if ("sourceStoreId" in item) {
+        const own = stores.find((s) => s.id === storeId);
+        const source = stores.find((s) => s.id === item.sourceStoreId);
+        if (!own || !source || own.currency !== source.currency || source.id === storeId) return false;
+        sourceId = source.id;
+      } else if (!("productIds" in item)) return false;
+      if ("productIds" in item && (!Array.isArray(item.productIds) || !item.productIds.length || new Set(item.productIds).size !== item.productIds.length || item.productIds.some((id) => !products.some((p) => p.id === id && p.storeId === sourceId)))) return false;
+    }
     units += item.quantity;
   }
   return Number.isSafeInteger(units) && mapping.packageCount <= units;
