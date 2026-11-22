@@ -82,6 +82,7 @@ export function calculateProfitability(store: Store, categories: Category[], tra
   const packaging = costComplete ? orderResults.reduce((sum, o) => sum + cents(o.packagingCost), 0) : null;
   const cost = purchase === null || shipping === null || packaging === null ? null : purchase + shipping + packaging;
   const contribution = cost === null ? null : revenue - cost;
+  const profit = contribution === null || !advertisingIds.length ? null : contribution - adSpend;
   const reviewRecord = (o: typeof orderResults[number]) => ({ sourceKey: o.sourceKey, kind: o.kind, label: o.label, date: o.date, revenue: o.revenue, suggestedQuantity: legacyQuantity(o.label, o.kind === "order") ?? legacyPackageCount(o.label), suggestedPackages: o.kind === "income" ? legacyPackageCount(o.label) ?? 1 : 1 });
   return {
     revenue: revenue / 100, adSpend: adSpend / 100,
@@ -89,7 +90,8 @@ export function calculateProfitability(store: Store, categories: Category[], tra
     shippingCost: shipping === null ? null : shipping / 100,
     packagingCost: packaging === null ? null : packaging / 100,
     productCost: cost === null ? null : cost / 100,
-    profit: contribution === null || !advertisingIds.length ? null : (contribution - adSpend) / 100,
+    profit: profit === null ? null : profit / 100,
+    profitMargin: profit !== null && revenue > 0 ? profit / revenue * 100 : null,
     roas: adSpend > 0 ? revenue / adSpend : null,
     breakEven: contribution !== null && contribution > 0 && revenue > 0 ? revenue / contribution : null,
     saleRecords, orderCount: orderResults.reduce((sum, o) => sum + o.packageCount, 0), linkedOrderCount: orderResults.filter((o) => o.kind === "order").length,

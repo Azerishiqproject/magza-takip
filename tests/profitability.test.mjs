@@ -447,3 +447,26 @@ test("new mixed knee and cream orders use actual items independently of legacy v
   const r = calculate(kneeStore, categories, [sale("new", 64)], [o], [...kneeVariants, cream]);
   assert.equal(r.purchaseCost, 21.5); assert.equal(r.shippingCost, 4); assert.equal(r.packagingCost, 1); assert.equal(r.soldUnits, 3); assert.equal(r.profit, 37.5);
 });
+
+test("profit margin is the share of sales income left after products, shipping, packaging and selected ads", () => {
+  const r = calculate(store, categories, [sale("o1"), tx("ad", "ads", "expense", 10), tx("unrelated", "fees", "expense", 999)], [order("o1")], products);
+  // 40 income - 10 products - 4 shipping - 1 packaging - 10 ads = 15 profit.
+  assert.equal(r.profitMargin, 37.5); assert.equal(r.profit, 15);
+  assert.equal(r.roas, 4); assert.equal(r.breakEven, 1.6);
+});
+
+test("aggregate profit margin weights actual revenue instead of averaging order margins", () => {
+  const r = calculate(store, categories, [sale("o1", 40), sale("o2", 60), tx("ad", "ads", "expense", 20)], [order("o1"), order("o2", [["main", 2]], { amount: 60 })], products);
+  assert.equal(r.profit, 46); assert.equal(r.profitMargin, 46);
+});
+
+test("profit margin preserves zero and negative profit and remains undefined without income or a complete profit", () => {
+  const orders = [order("o1")];
+  for (const [ads, expected] of [[0, 62.5], [25, 0], [35, -25]]) {
+    assert.equal(calculate(store, categories, [sale("o1"), tx("ad", "ads", "expense", ads)], orders, products).profitMargin, expected);
+  }
+  const onlyAds = calculate(store, categories, [tx("ad", "ads", "expense", 10)], [], products);
+  assert.equal(onlyAds.profit, -10); assert.equal(onlyAds.profitMargin, null);
+  assert.equal(calculate(store, categories, [sale("o1")], orders, []).profitMargin, null);
+  assert.equal(calculate({ ...store, profitSettings: { ...settings, advertisingCategoryIds: [] } }, categories, [sale("o1")], orders, products).profitMargin, null);
+});
