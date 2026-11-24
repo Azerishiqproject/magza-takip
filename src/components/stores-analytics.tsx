@@ -1,15 +1,16 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useCallback, useId, useMemo, useState } from "react";
 import { format, subDays } from "date-fns";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { SlidersHorizontal, Store as StoreIcon } from "lucide-react";
 import { buildSalesReport, buildStoreReports, getReportRange, matchesSalesStatus, orderCreatedDate, reportCategoryOptions, reportMoney, scopedReportStores, type CurrencyReport, type ReportMetric, type ReportPeriod, type ReportView, type SalesStatus, type StatusScope } from "@/lib/store-analytics";
-import type { Category, Order, Store, StoreFolder, Transaction } from "@/lib/types";
+import type { Category, Order, Store, StoreFolder, Transaction, TransactionType } from "@/lib/types";
 import { ReportStoreSelect } from "./report-store-select";
 import { ReportDetails } from "./report-details";
 import { StoreSalesReport } from "./store-sales-report";
 import { Field } from "./modal";
+import { StoreFlowDetailModal } from "./store-flow-detail-modal";
 
 const METRICS: { id: ReportMetric; label: string }[] = [{ id: "flow", label: "Gelir ve gider akışı" }, { id: "all", label: "Finans özeti" }, { id: "sales", label: "Satış adedi" }, { id: "income", label: "Gelir" }, { id: "expense", label: "Gider" }, { id: "profit", label: "Kâr / zarar" }];
 const VIEWS: { id: ReportView; label: string }[] = [{ id: "time", label: "Zaman" }, { id: "stores", label: "Mağazalar" }, { id: "folders", label: "Klasörler" }, { id: "categories", label: "Kategoriler" }];
@@ -84,7 +85,8 @@ export function StoresAnalytics({ stores, folders, categories, transactions, ord
           <ReportMetricCard label={category === "all" ? "Kâr / zarar" : "Kategori net sonucu"} value={reportMoney(report.profit, report.currency)} color={report.profit < 0 ? "#ff9b92" : "#83c8fa"}/>
         </div>
         <div className="mt-5"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h4 className="text-sm font-semibold">{view === "time" ? metric === "flow" ? "Gelir ve gider akışı" : metric === "all" ? "Gelir, gider ve kâr" : `${METRICS.find((item) => item.id === metric)?.label} akışı` : view === "stores" ? "Mağaza karşılaştırması" : view === "folders" ? "Klasör karşılaştırması" : "Kategori karşılaştırması"}</h4><span className="text-xs text-[#929da8]">{report.currency}{view === "time" ? ` · ${report.granularity === "year" ? "Yıllık" : report.granularity === "month" ? "Aylık" : "Günlük"}` : ""}</span></div>
-          {report.count ? <ReportChart report={report} metric={metric} view={view}/> : <div className="grid min-h-[240px] place-items-center text-center text-sm text-[#929da8]">Bu seçim için finans kaydı bulunmuyor.</div>}
+          {metric === "flow" && view === "time" && <p className="mb-3 text-xs text-[#929da8]">Detaylar için yeşil gelir veya kırmızı gider noktasına tıklayın.</p>}
+          {report.count ? <ReportChart report={report} metric={metric} view={view} stores={selected} categories={categories}/> : <div className="grid min-h-[240px] place-items-center text-center text-sm text-[#929da8]">Bu seçim için finans kaydı bulunmuyor.</div>}
         </div>
         <ReportDetails>
           <p className="mb-4 text-xs leading-6 text-[#929da8]">Teslim edilen siparişler ve kaydedilmiş gelir/giderler gösterilir. Para birimleri ayrı hesaplanır. Kategori seçildiğinde özet ve grafik yalnızca o kategoriye aittir.</p>
@@ -99,17 +101,31 @@ function ReportMetricCard({ label, value, color }: { label: string; value: strin
   return <div className="rounded-xl bg-[#ffffff03] p-4"><p className="text-xs text-[#9ca8b4]">{label}</p><p className="mt-2 break-words text-xl font-semibold tracking-tight sm:text-2xl" style={{ color }}>{value}</p></div>;
 }
 
-function ReportChart({ report, metric, view }: { report: CurrencyReport; metric: ReportMetric; view: ReportView }) {
+function ReportChart({ report, metric, view, stores, categories }: { report: CurrencyReport; metric: ReportMetric; view: ReportView; stores: Store[]; categories: Category[] }) {
   const gradientId = useId();
+  const [detail, setDetail] = useState<{ id: string; type: TransactionType } | null>(null);
+  const closeDetail = useCallback(() => setDetail(null), []);
+  const detailPoint = detail && metric === "flow" && view === "time" ? report.timeline.find((point) => point.id === detail.id) : undefined;
   const series = SERIES.filter((item) => metric === "all" || (metric === "flow" ? item.key !== "profit" : item.key === metric));
   const data = view === "time" ? report.timeline : view === "stores" ? report.byStore : view === "folders" ? report.byFolder : report.byCategory.map((point) => ({ ...point, label: `${point.label} · ${point.type === "income" ? "Gelir" : "Gider"}` }));
   const chartHeight = view === "time" ? 290 : Math.max(290, data.length * 55);
   const shared = <><CartesianGrid stroke="#252d35" strokeDasharray="3 5" vertical={false}/><ReferenceLine y={view === "time" ? 0 : undefined} x={view !== "time" ? 0 : undefined} stroke="#45515c"/><Tooltip contentStyle={{ background: "#111820", border: "1px solid #2c3740", borderRadius: 12, fontSize: 11 }} labelStyle={{ color: "#c6d1d9" }} formatter={(value, name) => [reportMoney(Number(value), report.currency), name]} cursor={view === "time" ? { stroke: "#42535c" } : { fill: "#ffffff06" }}/><Legend wrapperStyle={{ fontSize: 12, paddingTop: 12 }}/></>;
-  return <div className="max-h-[540px] overflow-y-auto" data-testid="stores-report-chart" aria-label={`${view === "time" ? "Zaman" : view === "stores" ? "Mağaza" : view === "folders" ? "Klasör" : "Kategori"} grafiği, ${METRICS.find((item) => item.id === metric)?.label}, ${report.currency}`}><div style={{ height: chartHeight, minWidth: 0 }}><ResponsiveContainer width="100%" height="100%">{view === "time" && metric === "flow" ? <AreaChart data={data} margin={{ top: 10, right: 12, left: 0, bottom: 0 }}>
+  return <><div className="max-h-[540px] overflow-y-auto" data-testid="stores-report-chart" aria-label={`${view === "time" ? "Zaman" : view === "stores" ? "Mağaza" : view === "folders" ? "Klasör" : "Kategori"} grafiği, ${METRICS.find((item) => item.id === metric)?.label}, ${report.currency}`}><div style={{ height: chartHeight, minWidth: 0 }}><ResponsiveContainer width="100%" height="100%">{view === "time" && metric === "flow" ? <AreaChart data={data} margin={{ top: 10, right: 12, left: 0, bottom: 0 }}>
     <defs>{series.map((item) => <linearGradient key={item.key} id={`${gradientId}-${item.key}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={item.color} stopOpacity={item.key === "income" ? .28 : .12}/><stop offset="95%" stopColor={item.color} stopOpacity={0}/></linearGradient>)}</defs>
     {shared}<XAxis dataKey="label" axisLine={false} tickLine={false} minTickGap={25} tick={{ fill: "#929da8", fontSize: 11 }}/><YAxis width={55} axisLine={false} tickLine={false} tick={{ fill: "#929da8", fontSize: 11 }} tickFormatter={(value) => Intl.NumberFormat("tr-TR", { notation: "compact", maximumFractionDigits: 1 }).format(Number(value))}/>
-    {series.map((item) => <Area key={item.key} type="monotone" dataKey={item.key} name={item.label} stroke={item.color} strokeWidth={item.key === "income" ? 2 : 1.5} fill={`url(#${gradientId}-${item.key})`} activeDot={{ r: 4 }} isAnimationActive={false}/>)}
-  </AreaChart> : view === "time" ? <LineChart data={data} margin={{ top: 10, right: 12, left: 0, bottom: 0 }}>{shared}<XAxis dataKey="label" axisLine={false} tickLine={false} minTickGap={25} tick={{ fill: "#929da8", fontSize: 11 }}/><YAxis width={55} axisLine={false} tickLine={false} tick={{ fill: "#929da8", fontSize: 11 }} tickFormatter={(value) => Intl.NumberFormat("tr-TR", { notation: "compact", maximumFractionDigits: 1 }).format(Number(value))}/>{series.map((item) => <Line key={item.key} type="linear" dataKey={item.key} name={item.label} stroke={item.color} strokeWidth={2} dot={false} activeDot={{ r: 4 }} isAnimationActive={false}/>)}</LineChart> : <BarChart data={data} layout="vertical" margin={{ top: 10, right: 15, left: 0, bottom: 0 }}>{shared}<XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: "#929da8", fontSize: 11 }} tickFormatter={(value) => Intl.NumberFormat("tr-TR", { notation: "compact", maximumFractionDigits: 1 }).format(Number(value))}/><YAxis type="category" dataKey="label" width={105} axisLine={false} tickLine={false} tick={{ fill: "#a0aab3", fontSize: 11 }} tickFormatter={(value) => String(value).length > 20 ? `${String(value).slice(0, 19)}…` : String(value)}/>{series.map((item) => <Bar key={item.key} dataKey={item.key} name={item.label} fill={item.color} radius={[0, 3, 3, 0]} maxBarSize={18} isAnimationActive={false}>{item.key === "profit" && data.map((point) => <Cell key={point.id} fill={point.profit < 0 ? "#ff887d" : "#57b8ff"}/>)}</Bar>)}</BarChart>}</ResponsiveContainer></div></div>;
+    {series.map((item) => <Area key={item.key} type="monotone" dataKey={item.key} name={item.label} stroke={item.color} strokeWidth={item.key === "income" ? 2 : 1.5} fill={`url(#${gradientId}-${item.key})`} dot={<FlowPointDot color={item.color} type={item.key === "income" ? "income" : "expense"} onSelect={(id, type) => setDetail({ id, type })}/>} activeDot={false} isAnimationActive={false}/>)}
+  </AreaChart> : view === "time" ? <LineChart data={data} margin={{ top: 10, right: 12, left: 0, bottom: 0 }}>{shared}<XAxis dataKey="label" axisLine={false} tickLine={false} minTickGap={25} tick={{ fill: "#929da8", fontSize: 11 }}/><YAxis width={55} axisLine={false} tickLine={false} tick={{ fill: "#929da8", fontSize: 11 }} tickFormatter={(value) => Intl.NumberFormat("tr-TR", { notation: "compact", maximumFractionDigits: 1 }).format(Number(value))}/>{series.map((item) => <Line key={item.key} type="linear" dataKey={item.key} name={item.label} stroke={item.color} strokeWidth={2} dot={false} activeDot={{ r: 4 }} isAnimationActive={false}/>)}</LineChart> : <BarChart data={data} layout="vertical" margin={{ top: 10, right: 15, left: 0, bottom: 0 }}>{shared}<XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: "#929da8", fontSize: 11 }} tickFormatter={(value) => Intl.NumberFormat("tr-TR", { notation: "compact", maximumFractionDigits: 1 }).format(Number(value))}/><YAxis type="category" dataKey="label" width={105} axisLine={false} tickLine={false} tick={{ fill: "#a0aab3", fontSize: 11 }} tickFormatter={(value) => String(value).length > 20 ? `${String(value).slice(0, 19)}…` : String(value)}/>{series.map((item) => <Bar key={item.key} dataKey={item.key} name={item.label} fill={item.color} radius={[0, 3, 3, 0]} maxBarSize={18} isAnimationActive={false}>{item.key === "profit" && data.map((point) => <Cell key={point.id} fill={point.profit < 0 ? "#ff887d" : "#57b8ff"}/>)}</Bar>)}</BarChart>}</ResponsiveContainer></div></div>
+    {detail && detailPoint && <StoreFlowDetailModal point={detailPoint} type={detail.type} granularity={report.granularity} currency={report.currency} storeCount={report.storeCount} stores={stores} categories={categories} onClose={closeDetail}/>}
+  </>;
+}
+
+function FlowPointDot({ cx, cy, payload, color, type, onSelect }: { cx?: number; cy?: number; payload?: { id: string }; color: string; type: TransactionType; onSelect: (id: string, type: TransactionType) => void }) {
+  if (cx === undefined || cy === undefined || !payload?.id) return <g/>;
+  const open = () => onSelect(payload.id, type);
+  return <g role="button" tabIndex={0} aria-label={`${payload.id} ${type === "income" ? "gelir" : "gider"} detaylarını aç`} className="group cursor-pointer outline-none" onClick={open} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); } }}>
+    <circle cx={cx} cy={cy} r={10} fill="transparent"/>
+    <circle cx={cx} cy={cy} r={3.5} fill={color} stroke="#0d1217" strokeWidth={1.5} className="group-hover:stroke-white group-focus:stroke-white"/>
+  </g>;
 }
 
 function ReportTable({ report, view }: { report: CurrencyReport; view: ReportView }) {

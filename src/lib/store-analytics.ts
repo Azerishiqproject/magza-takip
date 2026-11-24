@@ -16,7 +16,7 @@ export type CurrencyReport = ReportTotals & {
   byStore: ReportPoint[];
   byFolder: (ReportPoint & { storeCount: number })[];
   byCategory: (ReportPoint & { type: TransactionType })[];
-  timeline: ReportPoint[];
+  timeline: (ReportPoint & { transactions: Transaction[] })[];
   granularity: "day" | "month" | "year";
 };
 
@@ -94,7 +94,7 @@ export function buildStoreReports(stores: Store[], categories: Category[], trans
   for (const store of storesById.values()) {
     let group = groups.get(store.currency);
     if (!group) {
-      group = { ...emptyTotals(), currency: store.currency, storeCount: 0, byStore: [], byFolder: [], byCategory: [], granularity, timeline: dates.map((date) => ({ ...emptyTotals(), id: format(date, granularity === "year" ? "yyyy" : granularity === "month" ? "yyyy-MM" : "yyyy-MM-dd"), label: format(date, granularity === "year" ? "yyyy" : granularity === "month" ? "MM/yyyy" : "dd/MM") })) };
+      group = { ...emptyTotals(), currency: store.currency, storeCount: 0, byStore: [], byFolder: [], byCategory: [], granularity, timeline: dates.map((date) => ({ ...emptyTotals(), transactions: [], id: format(date, granularity === "year" ? "yyyy" : granularity === "month" ? "yyyy-MM" : "yyyy-MM-dd"), label: format(date, granularity === "year" ? "yyyy" : granularity === "month" ? "MM/yyyy" : "dd/MM") })) };
       groups.set(store.currency, group);
     }
     group.storeCount++;
@@ -122,7 +122,7 @@ export function buildStoreReports(stores: Store[], categories: Category[], trans
     add(folderPointsByStore.get(store.id)!, transaction);
     const timeId = granularity === "year" ? transaction.date.slice(0, 4) : granularity === "month" ? transaction.date.slice(0, 7) : transaction.date;
     const timePoint = timePoints.get(store.currency)!.get(timeId);
-    if (timePoint) add(timePoint, transaction);
+    if (timePoint) { add(timePoint, transaction); timePoint.transactions.push(transaction); }
     let points = categoryPoints.get(store.currency);
     if (!points) { points = new Map(); categoryPoints.set(store.currency, points); }
     let point = points.get(category.key);

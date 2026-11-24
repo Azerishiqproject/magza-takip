@@ -225,3 +225,50 @@ test("all-time sales range can be derived solely from orders when financial reco
   assert.equal(result.start, "2026-10-10"); assert.equal(result.end, "2026-10-16");
   assert.equal(buildSalesReport(stores, folders, orders, result).total, 4);
 });
+
+test("flow point detail records reconcile with the plotted totals and currency", () => {
+  const original = structuredClone(transactions);
+  for (const group of report()) {
+    for (const point of group.timeline) {
+      assert.equal(point.transactions.length, point.count);
+      for (const type of ["income", "expense"]) {
+        const sumCents = point.transactions.filter(t => t.type === type).reduce((sum, t) => sum + Math.round(t.amount * 100), 0);
+        assert.equal(sumCents, Math.round(point[type] * 100));
+      }
+      assert.ok(point.transactions.every(t => stores.find(s => s.id === t.storeId).currency === group.currency && t.date === point.id));
+    }
+  }
+  assert.deepEqual(transactions, original);
+});
+
+test("flow details retain store/status/category filters and empty buckets", () => {
+  const selected = scopedReportStores(stores, folders, "folder:f1", "active");
+  const group = report(selected, transactions, JSON.stringify(["expense", "reklam"]))[0];
+  assert.deepEqual(group.timeline[0].transactions.map(t => t.id), ["a2"]);
+  assert.deepEqual(group.timeline[1].transactions, []);
+  assert.equal(group.timeline[0].expense, 30);
+});
+
+test("monthly and annual detail buckets contain only transactions inside the selected range", () => {
+  const records = [
+    transaction("before", "a", "income", 999, "a-income", "2026-01-01"),
+    transaction("jan", "a", "income", 10, "a-income", "2026-01-16"),
+    transaction("oct", "a", "expense", 5, "a-ads", "2026-10-10"),
+    transaction("after", "a", "expense", 999, "a-ads", "2026-10-20"),
+  ];
+  const monthly = buildStoreReports([stores[0]], categories, records, { start: "2026-01-15", end: "2026-10-11", error: null })[0];
+  assert.equal(monthly.granularity, "month");
+  assert.deepEqual(monthly.timeline.find(p => p.id === "2026-01").transactions.map(t => t.id), ["jan"]);
+  assert.deepEqual(monthly.timeline.find(p => p.id === "2026-10").transactions.map(t => t.id), ["oct"]);
+  const annual = buildStoreReports([stores[0]], categories, records, { start: "2020-01-01", end: "2026-10-11", error: null })[0];
+  assert.equal(annual.granularity, "year");
+  assert.deepEqual(annual.timeline.find(p => p.id === "2026").transactions.map(t => t.id), ["before", "jan", "oct"]);
+});
+
+test("flow details use the exact counted record when duplicate IDs have conflicting data", () => {
+  const counted = transaction("same", "a", "income", 100, "a-income");
+  const records = [{ ...counted, date: "invalid" }, counted, { ...counted, amount: 999 }];
+  const group = report([stores[0]], records)[0];
+  assert.equal(group.timeline[0].income, 100);
+  assert.deepEqual(group.timeline[0].transactions, [counted]);
+});
