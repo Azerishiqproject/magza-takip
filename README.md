@@ -83,13 +83,15 @@ Shopify siparişlerini otomatik almak için sonraki aşamada sunucu taraflı Sho
 
 ## Mağazalar raporu
 
-**Mağazalar → Raporlar** günlük satış adediyle açılır. Üstteki **Mağazalar / klasörler** alanından birden fazla mağazayı aynı anda işaretleyebilir, bir klasörün tamamını seçebilir veya arama yapabilirsiniz. Seçili mağazaların grafikleri ve toplamları birlikte hesaplanır. Dönem ve gösterilecek veri yanındaki menülerden belirlenir. **Göster** menüsündeki Finans özeti, Gelir, Gider ve Kâr / zarar seçenekleri tutar grafiğini açar. Grafik yanındaki seçimle zaman, mağaza, klasör veya finans kategorisi karşılaştırmasına geçilir.
+**Mağazalar → Raporlar** günlük satış adediyle açılır. Üstteki **Mağazalar / klasörler** alanından birden fazla mağazayı aynı anda işaretleyebilir, bir klasörün tamamını seçebilir veya arama yapabilirsiniz. Seçili mağazaların grafikleri ve toplamları birlikte hesaplanır. Dönem ve gösterilecek veri yanındaki menülerden belirlenir. **Göster → Gelir ve gider akışı**, Genel bakıştaki gibi yeşil gelir ve kırmızı gider alan grafiğini seçili tüm mağazaların toplamıyla gösterir. Mağaza/klasör seçimi, dönem, kategori ve mağaza durumu filtreleri bu grafiğe de uygulanır; farklı para birimleri ayrı tutulur. Finans özeti, Gelir, Gider ve Kâr / zarar seçenekleri de tutar grafiğini açar. Grafik yanındaki seçimle zaman, mağaza, klasör veya finans kategorisi karşılaştırmasına geçilir.
 
 **Filtreler** düğmesi mağaza durumu ve sipariş durumu/finans kategorisi seçeneklerini açar. Ek filtreler kapalıyken de etkin seçimler görünür; **Sıfırla** ile temizlenebilir. Ek filtreleri sıfırlamak ana mağaza seçimini değiştirmez. Ayrıntılı toplamlar **Ayrıntılı tablo** bölümündedir. Farklı para birimleri finans raporunda ayrı hesaplanır; para birimi menüsüyle aralarında geçiş yapılır.
 
 **Satış adedi** gelir kaydı oluşmasını beklemeden siparişleri oluşturuldukları yerel takvim gününe göre sayar. Paket siparişler tek satış sayılır. Varsayılan olarak iptaller hariçtir; filtrelerden iptaller dahil tümü veya belirli bir sipariş durumu seçilebilir. Farklı para birimlerinde satış yapan mağazaların adetleri birlikte sayılır. Bir yıla kadar günlük, daha uzun aralıklarda aylık/yıllık adetler gösterilir.
 
 Finans raporu teslim edilen siparişlerin finans kayıtlarını ve manuel gelir/giderleri kullanır; siparişler ayrıca eklenerek çift sayılmaz. Aynı ad ve türdeki kategoriler birleştirilir. Silinmiş/kategorisiz kayıtlar “Kategorisiz” altında görünür. Kategori seçilirse özet ve grafik yalnızca o kategoriyi kapsar. Uzun tarih aralıkları aylık/yıllık gruplara ayrılır.
+
+Üstteki **Mağaza seç** menüsünde klasörler başlangıçta kapalıdır; klasör adına tıklayarak içindeki mağazaları açabilirsiniz.
 
 **Mağazalarım** bölümünde mağaza arayabilir, mağaza veya klasör oluşturabilirsiniz. Mağazanın **Yönet** düğmesi ad, domain, klasör ve aktif/duraklatılmış durumunu düzenler. Silme işlemi bu ekrandan ayrı onayla başlatılır. Raporlar ile Mağazalarım arasında geçiş yapmak rapor seçimlerini korur.
 

@@ -2,7 +2,7 @@ import { eachDayOfInterval, eachMonthOfInterval, eachYearOfInterval, format, sta
 import type { Category, Order, Period, Store, StoreFolder, Transaction, TransactionType } from "./types";
 
 export type ReportPeriod = Period | "all";
-export type ReportMetric = "all" | "income" | "expense" | "profit" | "sales";
+export type ReportMetric = "all" | "income" | "expense" | "profit" | "sales" | "flow";
 export type ReportView = "time" | "stores" | "folders" | "categories";
 export type StoreScope = "all" | "ungrouped" | `folder:${string}` | `store:${string}`;
 export type StatusScope = "all" | Store["status"];
